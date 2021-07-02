@@ -108,7 +108,7 @@ typedef struct png_file_tag
 // Callback function prototypes
 typedef int32_t (PNG_WRITE_CALLBACK)(PNGFILE *pFile, uint8_t *pBuf, int32_t iLen);
 typedef int32_t (PNG_SEEK_CALLBACK)(PNGFILE *pFile, int32_t iPosition);
-typedef void * (PNG_OPEN_CALLBACK)(const char *szFilename, int32_t *pFileSize);
+typedef void * (PNG_OPEN_CALLBACK)(const char *szFilename);
 typedef void (PNG_CLOSE_CALLBACK)(void *pHandle);
 
 //
@@ -116,11 +116,12 @@ typedef void (PNG_CLOSE_CALLBACK)(void *pHandle);
 //
 typedef struct png_image_tag
 {
-    int iWidth, iHeight; // image size
+    int iWidth, iHeight, y; // image size
     uint8_t ucBpp, ucPixelType, ucCompLevel;
     uint8_t ucMemType;
     uint8_t *pOutput;
-    int iBufferSize;
+    int iBufferSize; // output buffer size provided by caller
+    int iDataSize; // final compressed data
     int iPitch; // bytes per line
     int iError;
     PNG_WRITE_CALLBACK *pfnWrite;
@@ -129,6 +130,7 @@ typedef struct png_image_tag
     PNG_CLOSE_CALLBACK *pfnClose;
     PNGFILE PNGFile;
     uint8_t ucZLIB[32768 + sizeof(deflate_state)]; // put this here to avoid needing malloc/free
+    z_stream c_stream; /* compression stream */
     uint8_t *pPalette;
     uint8_t ucPrevLine[PNG_MAX_BUFFERED_PIXELS * 2];
     uint8_t ucPrevLine2[PNG_MAX_BUFFERED_PIXELS * 2];
@@ -144,8 +146,8 @@ class PNG
 {
   public:
     int open(const char *szFilename, PNG_OPEN_CALLBACK *pfnOpen, PNG_CLOSE_CALLBACK *pfnClose, PNG_WRITE_CALLBACK *pfnWrite, PNG_SEEK_CALLBACK *pfnSeek);
-    void open(uint8_t *pOutput, int iBufferSize);
-    void close();
+    int open(uint8_t *pOutput, int iBufferSize);
+    int close();
     int encodeBegin(int iWidth, int iHeight, uint8_t iPixelType, uint8_t *pPalette, uint8_t iCompLevel);
     int addLine(uint8_t *pPixels);
     int getLastError();

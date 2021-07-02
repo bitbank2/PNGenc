@@ -105,16 +105,12 @@ static unsigned char PILPAETH(unsigned char a, unsigned char b, unsigned char c)
  *  PURPOSE    : Compress a block of image data into an IDAT chunk.         *
  *                                                                          *
  ****************************************************************************/
-int CompressPNG(PNGIMAGE *pImage, uint8_t *pSrc, int y)
+int PNGAddLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
 {
     unsigned char ucFilter; // filter type
     unsigned char *pOut;
-    unsigned char *pTempLine = NULL;
-    unsigned char **indexbuf = NULL;
     int iStride;
-    z_stream c_stream; /* compression stream */
     int err;
-    int iLen;
     int iPitch;
     
     iStride = pImage->ucBpp >> 3; // bytes per pixel
@@ -131,23 +127,23 @@ int CompressPNG(PNGIMAGE *pImage, uint8_t *pSrc, int y)
     // Compress the filtered image data
     if (y == 0) // first block, initialize zlib
     {
-        memset(&c_stream, 0, sizeof(z_stream));
+        memset(&pImage->c_stream, 0, sizeof(z_stream));
         // ZLIB compression levels: 1 = fastest, 9 = most compressed (slowest)
-        err = deflateInit(&c_stream, pImage->ucCompLevel); // might as well use max compression
+        err = deflateInit(&pImage->c_stream, pImage->ucCompLevel); // might as well use max compression
+        pImage->c_stream.next_out = pImage->pOutput; // pImage->ucFileBuf; // DEBUG
+        pImage->c_stream.total_out = 0;
+        pImage->c_stream.avail_out = pImage->iBufferSize; // DEBUG
     }
-    c_stream.next_in  = (Bytef*)pImage->ucFileBuf;
-    c_stream.next_out = pImage->ucFileBuf; // DEBUG
-    c_stream.total_out = 0;
-    c_stream.total_in = 0;
-    c_stream.avail_in = iPitch+1; // compress entire buffer in 1 shot
-    c_stream.avail_out = 4096; // DEBUG
-    while (c_stream.total_in != (uLong)iPitch && c_stream.total_out < (unsigned)4096)
+    pImage->c_stream.next_in  = (Bytef*)pImage->ucFileBuf;
+    pImage->c_stream.total_in = 0;
+    pImage->c_stream.avail_in = iPitch+1; // compress entire buffer in 1 shot
+//    while (pImage->c_stream.total_in != 0 && pImage->c_stream.total_out < (unsigned)pImage->iBufferSize)
     {
         //      c_stream.avail_in = c_stream.avail_out = 1; /* force small buffers */
-        err = deflate(&c_stream, Z_NO_FLUSH);
+        err = deflate(&pImage->c_stream, Z_NO_FLUSH);
         //         CHECK_ERR(err, "deflate");
     }
-    err = deflate(&c_stream, Z_SYNC_FLUSH);
+//    err = deflate(&pImage->c_stream, Z_SYNC_FLUSH);
     /* Finish the stream, still forcing small buffers: */
     if (err < 0) // unable to compress the data, use it raw
     {
@@ -156,13 +152,14 @@ int CompressPNG(PNGIMAGE *pImage, uint8_t *pSrc, int y)
     }
     if (y == pImage->iHeight - 1) // last line, clean up
     {
-        err = deflate(&c_stream, Z_FINISH);
-        err = deflateEnd(&c_stream);
+        err = deflate(&pImage->c_stream, Z_FINISH);
+        err = deflateEnd(&pImage->c_stream);
+        pImage->iDataSize = (int)pImage->c_stream.total_out;
     }
     
-    return (int)c_stream.total_out;
+    return PNG_SUCCESS; // DEBUG
     
-} /* CompressPNG() */
+} /* PNGAddLine() */
 
 /****************************************************************************
  *                                                                          *

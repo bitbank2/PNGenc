@@ -34,7 +34,7 @@ int PNG::open(const char *szFilename, PNG_OPEN_CALLBACK *pfnOpen, PNG_CLOSE_CALL
     _png.pfnSeek = pfnSeek;
     _png.pfnOpen = pfnOpen;
     _png.pfnClose = pfnClose;
-    _png.PNGFile.fHandle = (*pfnOpen)(szFilename, &_png.PNGFile.iSize);
+    _png.PNGFile.fHandle = (*pfnOpen)(szFilename);
     if (_png.PNGFile.fHandle == NULL) {
         _png.iError = PNG_INVALID_FILE;
        return PNG_INVALID_FILE;
@@ -43,10 +43,11 @@ int PNG::open(const char *szFilename, PNG_OPEN_CALLBACK *pfnOpen, PNG_CLOSE_CALL
 
 } /* open() */
 
-void PNG::open(uint8_t *pOutput, int iBufferSize)
+int PNG::open(uint8_t *pOutput, int iBufferSize)
 {
     _png.pOutput = pOutput;
     _png.iBufferSize = iBufferSize;
+    return PNG_SUCCESS;
 } /* open() */
 
 //
@@ -59,10 +60,11 @@ int PNG::getLastError()
 //
 // Close the file - not needed when decoding from memory
 //
-void PNG::close()
+int PNG::close()
 {
     if (_png.pfnClose)
         (*_png.pfnClose)(_png.PNGFile.fHandle);
+    return _png.iDataSize;
 } /* close() */
 
 int PNG::encodeBegin(int iWidth, int iHeight, uint8_t ucPixelType, uint8_t *pPalette, uint8_t ucCompLevel)
@@ -72,10 +74,28 @@ int PNG::encodeBegin(int iWidth, int iHeight, uint8_t ucPixelType, uint8_t *pPal
     _png.ucPixelType = ucPixelType;
     _png.pPalette = pPalette;
     _png.ucCompLevel = ucCompLevel;
+    _png.y = 0;
+    switch (ucPixelType) {
+        case PNG_PIXEL_GRAYSCALE:
+        case PNG_PIXEL_INDEXED:
+            _png.ucBpp = 8;
+            break;
+        case PNG_PIXEL_TRUECOLOR:
+            _png.ucBpp = 24;
+            break;
+        case PNG_PIXEL_TRUECOLOR_ALPHA:
+            _png.ucBpp = 32;
+            break;
+        default:
+            return PNG_INVALID_PARAMETER;
+    }
     return PNG_SUCCESS;
 } /* encodeBegin() */
 
 int PNG::addLine(uint8_t *pPixels)
 {
-    
+    int rc;
+    rc = PNGAddLine(&_png, pPixels, _png.y);
+    _png.y++;
+    return rc;
 } /* addLine() */
