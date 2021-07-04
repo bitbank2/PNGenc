@@ -117,11 +117,13 @@ typedef void (PNG_CLOSE_CALLBACK)(void *pHandle);
 typedef struct png_image_tag
 {
     int iWidth, iHeight, y; // image size
-    uint8_t ucBpp, ucPixelType, ucCompLevel;
+    uint8_t ucBpp, ucPixelType, ucCompLevel, ucTransparent;
     uint8_t ucMemType;
     uint8_t *pOutput;
     int iBufferSize; // output buffer size provided by caller
-    int iDataSize; // final compressed data
+    int iHeaderSize; // size of the PNG header
+    int iCompressedSize; // size of flate output
+    int iDataSize; // total output file size
     int iPitch; // bytes per line
     int iError;
     PNG_WRITE_CALLBACK *pfnWrite;
@@ -131,9 +133,9 @@ typedef struct png_image_tag
     PNGFILE PNGFile;
     uint8_t ucZLIB[32768 + sizeof(deflate_state)]; // put this here to avoid needing malloc/free
     z_stream c_stream; /* compression stream */
+//    z_stream c_stream; /* compression stream */
     uint8_t *pPalette;
     uint8_t ucPrevLine[PNG_MAX_BUFFERED_PIXELS * 2];
-    uint8_t ucPrevLine2[PNG_MAX_BUFFERED_PIXELS * 2];
     uint8_t ucFileBuf[PNG_FILE_BUF_SIZE]; // holds temp file data
 } PNGIMAGE;
 

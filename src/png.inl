@@ -98,14 +98,113 @@ static unsigned char PILPAETH(unsigned char a, unsigned char b, unsigned char c)
     
 } /* PILPAETH() */
 
-/****************************************************************************
- *                                                                          *
- *  FUNCTION   : CompressPNG()                                           *
- *                                                                          *
- *  PURPOSE    : Compress a block of image data into an IDAT chunk.         *
- *                                                                          *
- ****************************************************************************/
-int PNGAddLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
+static int PNGStartFile(PNGIMAGE *pImage)
+{
+    int iError = PNG_SUCCESS;
+    unsigned char *p;
+    int iSize, i, iLen, iCompressedSize;
+    uint32_t ulCRC;
+    int iStart, iBlock, iCount, iBlockCount;
+        
+    p = pImage->pOutput;
+    iSize = 0; // output data size
+    WRITEMOTO32(p, iSize, 0x89504e47); // PNG File header
+    iSize += 4;
+    WRITEMOTO32(p, iSize, 0x0d0a1a0a);
+    iSize += 4;
+    // IHDR contains 13 data bytes
+    WRITEMOTO32(p, iSize, 0x0000000d); // IHDR length
+    iSize += 4;
+    WRITEMOTO32(p, iSize, 0x49484452); // IHDR marker
+    iSize += 4;
+    WRITEMOTO32(p, iSize, pImage->iWidth); // Image Width
+    iSize += 4;
+    WRITEMOTO32(p, iSize, pImage->iHeight); // Image Height
+    iSize += 4;
+    p[iSize++] = (pImage->ucBpp > 8) ? 8:pImage->ucBpp; // Bit depth
+    p[iSize++] = pImage->ucPixelType;
+    p[iSize++] = 0; // compression method 0
+    p[iSize++] = 0; // filter type 0
+    p[iSize++] = 0; // interlace = no
+    ulCRC = PNGCalcCRC(&p[iSize-17], 17); // store CRC for IHDR chunk
+    WRITEMOTO32(p, iSize, ulCRC);
+    iSize += 4;
+
+    if (pImage->ucPixelType == PNG_PIXEL_INDEXED)
+	   {
+           // Write the palette
+           iLen = (1 << pImage->ucBpp); // palette length
+           WRITEMOTO32(p, iSize, iLen*3); // 3 bytes per entry
+           iSize += 4;
+           WRITEMOTO32(p, iSize, 0x504c5445/*'PLTE'*/);
+           iSize += 4;
+           for (i=0; i<iLen; i++)
+           {
+               p[iSize++] = pImage->pPalette[i*3+2]; // red
+               p[iSize++] = pImage->pPalette[i*3+1]; // green
+               p[iSize++] = pImage->pPalette[i*3+0]; // blue
+           }
+           ulCRC = PNGCalcCRC(&p[iSize-(iLen*3)-4], 4+(iLen*3)); // store CRC for PLTE chunk
+           WRITEMOTO32(p, iSize, ulCRC);
+           iSize += 4;
+           if (pImage->ucTransparent >= 0 && pImage->ucTransparent < (1 << pImage->ucBpp)) // add transparency chunk
+           {
+               iLen = (1 << pImage->ucBpp); // palette length
+               WRITEMOTO32(p, iSize, iLen); // 1 byte per palette alpha entry
+               iSize += 4;
+               WRITEMOTO32(p, iSize, 0x74524e53 /*'tRNS'*/);
+               iSize += 4;
+               for (i = 0; i<iLen; i++) // write n alpha values to accompany the palette
+               {
+                   if (i == pImage->ucTransparent)
+                       p[iSize++] = 0; // alpha 0 = fully transparent
+                   else
+                       p[iSize++] = 255; // fully opaque
+               }
+               ulCRC = PNGCalcCRC(&p[iSize - iLen - 4], 4 + iLen); // store CRC for tRNS chunk
+               WRITEMOTO32(p, iSize, ulCRC);
+               iSize += 4;
+           }
+       }
+    // IDAT
+    WRITEMOTO32(p, iSize, 0/*iCompressedSize*/); // IDAT length
+    iSize += 4;
+    WRITEMOTO32(p, iSize, 0x49444154); // IDAT marker
+    iSize += 4;
+    pImage->iHeaderSize = iSize; // keep the PNG header size for later
+    
+makepng_exit:
+    return iError;
+    
+} /* PNGStartFile() */
+//
+// Finish PNG file data
+//
+int PNGEndFile(PNGIMAGE *pImage)
+{
+    int iSize;
+    uint8_t *p;
+    uint32_t ulCRC;
+    
+    p = pImage->pOutput;
+    iSize = pImage->iHeaderSize;
+    WRITEMOTO32(p, iSize-8, pImage->iCompressedSize); // write IDAT chunk size
+    iSize += pImage->iCompressedSize;
+    ulCRC = PNGCalcCRC(&p[iSize-pImage->iCompressedSize-4], pImage->iCompressedSize+4); // store CRC for IDAT chunk
+    WRITEMOTO32(p, iSize, ulCRC);
+    iSize += 4;
+    // Write the IEND chunk
+    WRITEMOTO32(p, iSize, 0);
+    iSize += 4;
+    WRITEMOTO32(p, iSize, 0x49454e44/*'IEND'*/);
+    iSize += 4;
+    WRITEMOTO32(p, iSize, 0xae426082); // same CRC every time
+    iSize += 4;
+    return iSize;
+
+} /* PNGEndFile() */
+
+static int PNGAddLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
 {
     unsigned char ucFilter; // filter type
     unsigned char *pOut;
@@ -118,21 +217,20 @@ int PNGAddLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
     if (iStride < 1)
         iStride = 1; // 1,4 bpp
     pOut = pImage->ucFileBuf;
-    memcpy(pImage->ucPrevLine2, pSrc, iPitch); // hold onto unfiltered pixels
-// PILPNGFindFilter(uint8_t *pCurr, uint8_t *pPrev, int iPitch, int iStride)
     ucFilter = PILPNGFindFilter(pSrc, (y == 0) ? NULL : pImage->ucPrevLine, iPitch, iStride); // find best filter
     *pOut++ = ucFilter; // store filter byte
     PNGFilter(ucFilter, pOut, pSrc, pImage->ucPrevLine, iStride, iPitch); // filter the current line of image data and store
-    memcpy(pImage->ucPrevLine, pImage->ucPrevLine2, iPitch);
+    memcpy(pImage->ucPrevLine, pSrc, iPitch);
     // Compress the filtered image data
     if (y == 0) // first block, initialize zlib
     {
+        PNGStartFile(pImage);
         memset(&pImage->c_stream, 0, sizeof(z_stream));
         // ZLIB compression levels: 1 = fastest, 9 = most compressed (slowest)
         err = deflateInit(&pImage->c_stream, pImage->ucCompLevel); // might as well use max compression
-        pImage->c_stream.next_out = pImage->pOutput; // pImage->ucFileBuf; // DEBUG
+        pImage->c_stream.next_out = &pImage->pOutput[pImage->iHeaderSize]; // pImage->ucFileBuf; // DEBUG
         pImage->c_stream.total_out = 0;
-        pImage->c_stream.avail_out = pImage->iBufferSize; // DEBUG
+        pImage->c_stream.avail_out = pImage->iBufferSize - pImage->iHeaderSize; // DEBUG
     }
     pImage->c_stream.next_in  = (Bytef*)pImage->ucFileBuf;
     pImage->c_stream.total_in = 0;
@@ -154,154 +252,13 @@ int PNGAddLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
     {
         err = deflate(&pImage->c_stream, Z_FINISH);
         err = deflateEnd(&pImage->c_stream);
-        pImage->iDataSize = (int)pImage->c_stream.total_out;
+        pImage->iCompressedSize = (int)pImage->c_stream.total_out;
+        pImage->iDataSize = PNGEndFile(pImage);
     }
     
     return PNG_SUCCESS; // DEBUG
     
 } /* PNGAddLine() */
-
-/****************************************************************************
- *                                                                          *
- *  FUNCTION   : PILMakePNG(PIL_PAGE *, PIL_PAGE *, int)                    *
- *                                                                          *
- *  PURPOSE    : Convert an image into PNG FLATE format.                    *
- *                                                                          *
- ****************************************************************************/
-int PILMakePNG(PNGIMAGE *pInPage)
-{
-    int iError = PNG_SUCCESS;
-    unsigned char *p;
-    int iSize, i, iLen, iCompressedSize;
-    uint32_t ulCRC;
-    int iStart, iBlock, iCount, iBlockCount;
-    unsigned char *pOut = NULL;
-    unsigned char *pComp = NULL; // compressed data
-    unsigned char *pUnComp = NULL; // uncompressed, filtered data
-    //unsigned char *pBW; // current black and white line
-        
-    // Break up the image into 8 blocks so that we don't have to allocate another buffer
-    // the same size as the uncompressed image.  This can also help the decoder reduce
-    // the memory it needs to decode the image.
-//    if (pInPage->iHeight > 200 && iOptions == 0)
-//    {
-//        iBlockCount = 8;
-//        iBlock = (pInPage->iHeight+7) / 8; // do it in 8 chunks
-//    }
-//    else
-//    {
-//        iBlockCount = 1;
-//        iBlock = pInPage->iHeight;
-//    }
-    p = pOut; // DEBUG
-    iSize = 0; // output data size
-    WRITEMOTO32(p, iSize, 0x89504e47); // PNG File header
-    iSize += 4;
-    WRITEMOTO32(p, iSize, 0x0d0a1a0a);
-    iSize += 4;
-    // IHDR contains 13 data bytes
-    WRITEMOTO32(p, iSize, 0x0000000d); // IHDR length
-    iSize += 4;
-    WRITEMOTO32(p, iSize, 0x49484452); // IHDR marker
-    iSize += 4;
-    WRITEMOTO32(p, iSize, pInPage->iWidth); // Image Width
-    iSize += 4;
-    WRITEMOTO32(p, iSize, pInPage->iHeight); // Image Height
-    iSize += 4;
-    if (pInPage->ucBpp == 8) // grayscale
-    {
-           p[iSize++] = pInPage->ucBpp; // Bit depth
-           p[iSize++] = PNG_PIXEL_GRAYSCALE;
-    }
-    else // full color image
-    {
-           p[iSize++] = 8; // Bit depth
-           p[iSize++] = (pInPage->ucBpp <= 24) ? 2:6; // RGB triplets or with alpha
-    }
-    p[iSize++] = 0; // compression method 0
-    p[iSize++] = 0; // filter type 0
-    p[iSize++] = 0; // interlace = no
-    ulCRC = PNGCalcCRC(&p[iSize-17], 17); // store CRC for IHDR chunk
-    WRITEMOTO32(p, iSize, ulCRC);
-    iSize += 4;
-#ifdef FUTURE
-    if (pInPage->ucBpp == 8 || pInPage->ucBpp == 4)
-	   {
-           // Write the palette
-           iLen = (1 << pInPage->ucBpp); // palette length
-           WRITEMOTO32(p, iSize, iLen*3); // 3 bytes per entry
-           iSize += 4;
-           WRITEMOTO32(p, iSize, 0x504c5445/*'PLTE'*/);
-           iSize += 4;
-           for (i=0; i<iLen; i++)
-           {
-               p[iSize++] = pInPage->pPalette[i*3+2]; // red
-               p[iSize++] = pInPage->pPalette[i*3+1]; // green
-               p[iSize++] = pInPage->pPalette[i*3+0]; // blue
-           }
-           ulCRC = PNGCalcCRC(&p[iSize-(iLen*3)-4], 4+(iLen*3)); // store CRC for PLTE chunk
-           WRITEMOTO32(p, iSize, ulCRC);
-           iSize += 4;
-           if (pInPage->iTransparent >= 0 && pInPage->iTransparent < (1 << pInPage->cBitsperpixel)) // add transparency chunk
-           {
-               iLen = (1 << pInPage->cBitsperpixel); // palette length
-               WRITEMOTO32(p, iSize, iLen); // 1 byte per palette alpha entry
-               iSize += 4;
-               WRITEMOTO32(p, iSize, 0x74524e53 /*'tRNS'*/);
-               iSize += 4;
-               for (i = 0; i<iLen; i++) // write n alpha values to accompany the palette
-               {
-                   if (i == pInPage->iTransparent)
-                       p[iSize++] = 0; // alpha 0 = fully transparent
-                   else
-                       p[iSize++] = 255; // fully opaque
-               }
-               ulCRC = PNGCalcCRC(&p[iSize - iLen - 4], 4 + iLen); // store CRC for tRNS chunk
-               WRITEMOTO32(p, iSize, ulCRC);
-               iSize += 4;
-           }
-       }
-#endif // FUTURE - palette not needed for a camera
-    // Compress the blocks of data and save each one as an
-    // IDAT chunk.
-    iStart = 0;
-    for (i=0; i<iBlockCount; i++)
-    {
-        iCount = iBlock;
-        if (iCount + iStart > pInPage->iHeight)
-            iCount = pInPage->iHeight - iStart;
-        // DEBUG
-//        iCompressedSize = CompressPNG(pInPage, pUnComp, i);
-//        if (iCompressedSize < 0) // error
-//        {
-//            iError = iCompressedSize;
-//            goto makepng_exit;
-//        }
-        iStart += iCount;
-        // IDAT
-        WRITEMOTO32(p, iSize, iCompressedSize); // IDAT length
-        iSize += 4;
-        WRITEMOTO32(p, iSize, 0x49444154); // IDAT marker
-        iSize += 4;
-        memcpy(&p[iSize], pComp, iCompressedSize);
-        iSize += iCompressedSize;
-        ulCRC = PNGCalcCRC(&p[iSize-iCompressedSize-4], iCompressedSize+4); // store CRC for IDAT chunk
-        WRITEMOTO32(p, iSize, ulCRC);
-        iSize += 4;
-    }
-    // Write the IEND chunk
-    WRITEMOTO32(p, iSize, 0);
-    iSize += 4;
-    WRITEMOTO32(p, iSize, 0x49454e44/*'IEND'*/);
-    iSize += 4;
-    WRITEMOTO32(p, iSize, 0xae426082); // same CRC every time
-    iSize += 4;
-//    pOutPage->iDataSize = iSize;
-    
-makepng_exit:
-    return iError;
-    
-} /* PILMakePNG() */
 
 /****************************************************************************
  *                                                                          *
@@ -419,7 +376,7 @@ int j;
          }
          while (j < (int)iPitch)
          {
-            pOut[j] = pCurr[j]-pPrev[j];
+            pOut[j] = pCurr[j]-pCurr[j-iStride];
             j++;
          }
          break;
