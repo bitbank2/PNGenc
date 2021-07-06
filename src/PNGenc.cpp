@@ -67,28 +67,15 @@ int PNG::close()
     return _png.iDataSize;
 } /* close() */
 
-int PNG::encodeBegin(int iWidth, int iHeight, uint8_t ucPixelType, uint8_t *pPalette, uint8_t ucCompLevel)
+int PNG::encodeBegin(int iWidth, int iHeight, uint8_t ucPixelType, uint8_t ucBpp, uint8_t *pPalette, uint8_t ucCompLevel)
 {
     _png.iWidth = iWidth;
     _png.iHeight = iHeight;
     _png.ucPixelType = ucPixelType;
+    _png.ucBpp = ucBpp;
     _png.pPalette = pPalette;
     _png.ucCompLevel = ucCompLevel;
     _png.y = 0;
-    switch (ucPixelType) {
-        case PNG_PIXEL_GRAYSCALE:
-        case PNG_PIXEL_INDEXED:
-            _png.ucBpp = 8;
-            break;
-        case PNG_PIXEL_TRUECOLOR:
-            _png.ucBpp = 24;
-            break;
-        case PNG_PIXEL_TRUECOLOR_ALPHA:
-            _png.ucBpp = 32;
-            break;
-        default:
-            return PNG_INVALID_PARAMETER;
-    }
     return PNG_SUCCESS;
 } /* encodeBegin() */
 

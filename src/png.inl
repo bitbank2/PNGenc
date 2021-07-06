@@ -1,5 +1,5 @@
 //
-// PNG Encoder
+// Embedded-friendly PNG Encoder
 //
 // Copyright (c) 2000-2021 BitBank Software, Inc.
 // Written by Larry Bank
@@ -10,28 +10,20 @@
 #include <string.h>
 #include "zlib.h"
 
+// Macro to simplify writing a big-endian 32-bit value on any CPU
 #define WRITEMOTO32(p, o, val) {uint32_t l = val; p[o] = (unsigned char)(l >> 24); p[o+1] = (unsigned char)(l >> 16); p[o+2] = (unsigned char)(l >> 8); p[o+3] = (unsigned char)l;}
 
-//extern int PILAdjustColors(PIL_PAGE *inpage, int iDestBpp, int iOptions, PILBOOL bAllocate);
-//extern int PILReadBMP(PIL_PAGE *pInPage, PIL_PAGE *pOutPage);
-//extern void PILTIFFHoriz(PIL_PAGE *InPage, PILBOOL bDecode);
-unsigned char PILPNGFindFilter(uint8_t *pCurr, uint8_t *pPrev, int iPitch, int iStride);
+unsigned char PNGFindFilter(uint8_t *pCurr, uint8_t *pPrev, int iPitch, int iStride);
 void PNGFilter(uint8_t ucFilter, uint8_t *pOut, uint8_t *pCurr, uint8_t *pPrev, int iStride, int iPitch);
-uint32_t PNGCalcCRC(unsigned char *buf, int len);
-
-/****************************************************************************
- *                                                                          *
- *  FUNCTION   : PNGCalcCRC()                                               *
- *                                                                          *
- *  PURPOSE    : Calculate the PNG-style CRC value for a block of data.     *
- *                                                                          *
- ****************************************************************************/
+//
+// Calculate the PNG-style CRC value for a block of data
+//
 uint32_t PNGCalcCRC(unsigned char *buf, int len)
 {
 /* Table of CRCs of all 8-bit messages. */
    static uint32_t crc_table[256];
    static int crc_table_computed = 0;
-   uint32_t crc = 0xffffffff;
+    uint32_t crc = 0xffffffff;
    int n;
 
    /* Make the table for a fast CRC. */
@@ -67,7 +59,7 @@ uint32_t PNGCalcCRC(unsigned char *buf, int len)
 
 } /* PNGCalcCRC() */
 
-static unsigned char PILPAETH(unsigned char a, unsigned char b, unsigned char c)
+static unsigned char PAETH(unsigned char a, unsigned char b, unsigned char c)
 {
     int pa, pb, pc;
 #ifdef SLOW_WAY
@@ -96,17 +88,18 @@ static unsigned char PILPAETH(unsigned char a, unsigned char b, unsigned char c)
         return b;
     else return c;
     
-} /* PILPAETH() */
-
+} /* PAETH() */
+//
+// Write the PNG file header and, if needed, a color palette chunk
+//
 static int PNGStartFile(PNGIMAGE *pImage)
 {
     int iError = PNG_SUCCESS;
     unsigned char *p;
-    int iSize, i, iLen, iCompressedSize;
+    int iSize, i, iLen;
     uint32_t ulCRC;
-    int iStart, iBlock, iCount, iBlockCount;
         
-    p = pImage->pOutput;
+    p = pImage->ucFileBuf;
     iSize = 0; // output data size
     WRITEMOTO32(p, iSize, 0x89504e47); // PNG File header
     iSize += 4;
@@ -171,14 +164,19 @@ static int PNGStartFile(PNGIMAGE *pImage)
     iSize += 4;
     WRITEMOTO32(p, iSize, 0x49444154); // IDAT marker
     iSize += 4;
+    pImage->iCompressedSize = 0;
     pImage->iHeaderSize = iSize; // keep the PNG header size for later
-    
+    if (pImage->pOutput) { // copy to ram?
+        memcpy(pImage->pOutput, pImage->ucFileBuf, iSize);
+    } else { // write it to the file
+        (*pImage->pfnWrite)(&pImage->PNGFile, pImage->ucFileBuf, iSize);
+    }
 makepng_exit:
     return iError;
     
 } /* PNGStartFile() */
 //
-// Finish PNG file data
+// Finish PNG file data (updates IDAT chunk size+crc & writes END chunk)
 //
 int PNGEndFile(PNGIMAGE *pImage)
 {
@@ -203,7 +201,29 @@ int PNGEndFile(PNGIMAGE *pImage)
     return iSize;
 
 } /* PNGEndFile() */
+//
+// My internal alloc/free functions to work on simple embedded systems
+//
+voidpf ZLIB_INTERNAL myalloc (voidpf opaque, unsigned int items, unsigned int size)
+{
+    PNGIMAGE *pImage = (PNGIMAGE *)opaque;
+    // allocate from our internal pool
+    int iSize = items * size;
+    void *p = &pImage->ucMemPool[pImage->iMemPool];
+    pImage->iMemPool += iSize;
+    return p;
+} /* myalloc() */
 
+void ZLIB_INTERNAL myfree (voidpf opaque, voidpf ptr)
+{
+    (void)opaque;
+    (void)ptr; // doesn't do anything since the memory is from an internal pool
+} /* myfree() */
+//
+// Compress one line of image at a time and write the compressed data
+// incrementally to the output file. This allows the system to not need an
+// input nor output buffer larger than 2 lines of image data
+//
 static int PNGAddLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
 {
     unsigned char ucFilter; // filter type
@@ -216,8 +236,8 @@ static int PNGAddLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
     iPitch = (pImage->iWidth * pImage->ucBpp) >> 3;
     if (iStride < 1)
         iStride = 1; // 1,4 bpp
-    pOut = pImage->ucFileBuf;
-    ucFilter = PILPNGFindFilter(pSrc, (y == 0) ? NULL : pImage->ucPrevLine, iPitch, iStride); // find best filter
+    pOut = pImage->ucCurrLine;
+    ucFilter = PNGFindFilter(pSrc, (y == 0) ? NULL : pImage->ucPrevLine, iPitch, iStride); // find best filter
     *pOut++ = ucFilter; // store filter byte
     PNGFilter(ucFilter, pOut, pSrc, pImage->ucPrevLine, iStride, iPitch); // filter the current line of image data and store
     memcpy(pImage->ucPrevLine, pSrc, iPitch);
@@ -226,49 +246,54 @@ static int PNGAddLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
     {
         PNGStartFile(pImage);
         memset(&pImage->c_stream, 0, sizeof(z_stream));
+        pImage->c_stream.zalloc = myalloc; // use internal alloc/free
+        pImage->c_stream.zfree = myfree; // to use our memory pool
+        pImage->c_stream.opaque = (voidpf)pImage;
+        pImage->iMemPool = 0;
         // ZLIB compression levels: 1 = fastest, 9 = most compressed (slowest)
-        err = deflateInit(&pImage->c_stream, pImage->ucCompLevel); // might as well use max compression
-        pImage->c_stream.next_out = &pImage->pOutput[pImage->iHeaderSize]; // pImage->ucFileBuf; // DEBUG
-        pImage->c_stream.total_out = 0;
-        pImage->c_stream.avail_out = pImage->iBufferSize - pImage->iHeaderSize; // DEBUG
+//        err = deflateInit(&pImage->c_stream, pImage->ucCompLevel); // might as well use max compression
+        err = deflateInit2_(&pImage->c_stream, pImage->ucCompLevel, Z_DEFLATED, MAX_WBITS-2, DEF_MEM_LEVEL-2, Z_DEFAULT_STRATEGY, ZLIB_VERSION, (int)sizeof(z_stream)); // might as well use max compression
     }
-    pImage->c_stream.next_in  = (Bytef*)pImage->ucFileBuf;
+    pImage->c_stream.total_out = 0;
+    pImage->c_stream.next_out = pImage->ucFileBuf;
+    pImage->c_stream.avail_out = PNG_FILE_BUF_SIZE;
+    pImage->c_stream.next_in  = (Bytef*)pImage->ucCurrLine;
     pImage->c_stream.total_in = 0;
     pImage->c_stream.avail_in = iPitch+1; // compress entire buffer in 1 shot
-//    while (pImage->c_stream.total_in != 0 && pImage->c_stream.total_out < (unsigned)pImage->iBufferSize)
-    {
-        //      c_stream.avail_in = c_stream.avail_out = 1; /* force small buffers */
-        err = deflate(&pImage->c_stream, Z_NO_FLUSH);
-        //         CHECK_ERR(err, "deflate");
-    }
-//    err = deflate(&pImage->c_stream, Z_SYNC_FLUSH);
-    /* Finish the stream, still forcing small buffers: */
-    if (err < 0) // unable to compress the data, use it raw
-    {
-//        memcpy(pComp, pUnComp, iLen);
-//        c_stream.total_out = iLen; // compressed length = uncompressed length
+    err = deflate(&pImage->c_stream, Z_SYNC_FLUSH);
+    if (err != Z_OK) { // something went wrong with the data compression, stop
+        pImage->iError = PNG_ENCODE_ERROR;
+        return PNG_ENCODE_ERROR;
     }
     if (y == pImage->iHeight - 1) // last line, clean up
     {
         err = deflate(&pImage->c_stream, Z_FINISH);
         err = deflateEnd(&pImage->c_stream);
-        pImage->iCompressedSize = (int)pImage->c_stream.total_out;
-        pImage->iDataSize = PNGEndFile(pImage);
     }
-    
+    // Write the data to memory or a file
+    if (pImage->pOutput) { // memory
+        if ((pImage->iHeaderSize + pImage->iCompressedSize + pImage->c_stream.total_out) > pImage->iBufferSize) {
+            // output buffer not large enough
+            pImage->iError = PNG_MEM_ERROR;
+            return PNG_MEM_ERROR;
+        }
+        memcpy(&pImage->pOutput[pImage->iHeaderSize + pImage->iCompressedSize], pImage->ucFileBuf, pImage->c_stream.total_out);
+    } else { // file
+        (*pImage->pfnWrite)(&pImage->PNGFile, pImage->ucFileBuf, (int)pImage->c_stream.total_out);
+    }
+    pImage->iCompressedSize += (int)pImage->c_stream.total_out;
+    if (y == pImage->iHeight -1) {
+        pImage->iDataSize = PNGEndFile(pImage);
+    }    
     return PNG_SUCCESS; // DEBUG
     
 } /* PNGAddLine() */
-
-/****************************************************************************
- *                                                                          *
- *  FUNCTION   : PNGFindFilter()                                            *
- *                                                                          *
- *  PURPOSE    : Find the best filter method for this scanline. Use SAD     *
- *               to compare all 5 filter options.                           *
- *                                                                          *
- ****************************************************************************/
-unsigned char PILPNGFindFilter(uint8_t *pCurr, uint8_t *pPrev, int iPitch, int iStride)
+//
+// Find the best filter method for the given scanline
+// Try each filter algorithm in turn and use SAD (sum of absolute differences)
+// to choose the one with the lowest sum (a reasonable proxy for entropy)
+//
+unsigned char PNGFindFilter(uint8_t *pCurr, uint8_t *pPrev, int iPitch, int iStride)
 {
 int i;
 unsigned char a, b, c, ucDiff, ucFilter;
@@ -334,7 +359,7 @@ uint32_t ulMin;
           c = 0;
        else
           c = pPrev[i-iStride]; // above left
-       ucDiff = pCurr[i] - PILPAETH(a,b,c);
+       ucDiff = pCurr[i] - PAETH(a,b,c);
        ulSum[4] += (ucDiff < 128) ? ucDiff: 256 - ucDiff;
        } // for i
        // Pick the best filter (or NONE if they're all bad)
@@ -349,15 +374,10 @@ uint32_t ulMin;
        } // for
        return ucFilter;
 
-} /* PILPNGFindFilter() */
-
-/****************************************************************************
- *                                                                          *
- *  FUNCTION   : PNGFilter()                                                *
- *                                                                          *
- *  PURPOSE    : Filter raw image data to make it compress better.          *
- *                                                                          *
- ****************************************************************************/
+} /* PNGFindFilter() */
+//
+// Apply the given filter algorithm to a line of image data
+//
 void PNGFilter(uint8_t ucFilter, uint8_t *pOut, uint8_t *pCurr, uint8_t *pPrev, int iStride, int iPitch)
 {
 int j;
@@ -430,7 +450,7 @@ int j;
                c = 0;
             else
                c = pPrev[j-iStride]; // above left
-            pOut[j] = pCurr[j] - PILPAETH(a,b,c);
+            pOut[j] = pCurr[j] - PAETH(a,b,c);
          }
          break;
       } // switch

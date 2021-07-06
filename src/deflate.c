@@ -264,20 +264,22 @@ int ZEXPORT deflateInit2_(strm, level, method, windowBits, memLevel, strategy,
     if (strm == Z_NULL) return Z_STREAM_ERROR;
 
     strm->msg = Z_NULL;
+    // We've disabled external dependencies like malloc/free
+    // so if our internal memory pool isn't being used, then it's an error
     if (strm->zalloc == (alloc_func)0) {
-#ifdef Z_SOLO
+//#ifdef Z_SOLO
         return Z_STREAM_ERROR;
-#else
-        strm->zalloc = zcalloc;
-        strm->opaque = (voidpf)0;
-#endif
+//#else
+//        strm->zalloc = zcalloc;
+//        strm->opaque = (voidpf)0;
+//#endif
     }
     if (strm->zfree == (free_func)0)
-#ifdef Z_SOLO
+//#ifdef Z_SOLO
         return Z_STREAM_ERROR;
-#else
-        strm->zfree = zcfree;
-#endif
+//#else
+//        strm->zfree = zcfree;
+//#endif
 
 #ifdef FASTEST
     if (level != 0) level = 1;

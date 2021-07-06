@@ -12,9 +12,9 @@ PNG png; // static instance of class
 //
 // Read a 24-bpp BMP file into memory
 //
-uint8_t * ReadBMP(const char *fname, int *width, int *height)
+uint8_t * ReadBMP(const char *fname, int *width, int *height, int *bpp, unsigned char *pPal)
 {
-    int y, w, h, offset;
+    int y, w, h, bits, offset;
     uint8_t *s, *d, *pTemp, *pBitmap;
     int pitch, bytewidth;
     int iSize, iDelta;
@@ -42,8 +42,18 @@ uint8_t * ReadBMP(const char *fname, int *width, int *height)
     }
     w = *(int32_t *)&pTemp[18];
     h = *(int32_t *)&pTemp[22];
+    bits = *(int16_t *)&pTemp[26] * *(int16_t *)&pTemp[28];
+    if (bits <= 8) { // it has a palette, copy it
+        uint8_t *p = pPal;
+        for (int i=0; i<(1<<bits); i++)
+        {
+           *p++ = pTemp[54+i*4];
+           *p++ = pTemp[55+i*4];
+           *p++ = pTemp[56+i*4];
+        }
+    }
     offset = *(int32_t *)&pTemp[10]; // offset to bits
-    bytewidth = w * 3;
+    bytewidth = (w * bits) >> 3;
     pitch = (bytewidth + 3) & 0xfffc; // DWORD aligned
 // move up the pixels
     d = pBitmap;
@@ -56,12 +66,22 @@ uint8_t * ReadBMP(const char *fname, int *width, int *height)
         h = -h;
     }
     for (y=0; y<h; y++) {
-        memcpy(d, s, bytewidth);
+        if (bits == 32) {// need to swap red and blue
+            for (int i=0; i<bytewidth; i+=4) {
+                d[i] = s[i+2];
+                d[i+1] = s[i+1];
+                d[i+2] = s[i];
+                d[i+3] = s[i+3];
+            }
+        } else {
+            memcpy(d, s, bytewidth);
+        }
         d += bytewidth;
         s += iDelta;
     }
     *width = w;
     *height = h;
+    *bpp = bits;
     free(pTemp);
     return pBitmap;
     
@@ -69,18 +89,45 @@ uint8_t * ReadBMP(const char *fname, int *width, int *height)
 
 #define ITERATION_COUNT 1
 
+int32_t myWrite(PNGFILE *pFile, uint8_t *pBuf, int32_t iLen)
+{
+    FILE *ohandle = (FILE *)pFile->fHandle;
+    return (int32_t)fwrite(pBuf, 1, iLen, ohandle);
+} /* myWrite() */
+
+int32_t mySeek(PNGFILE *pFile, int32_t iPosition)
+{
+    FILE *f = (FILE *)pFile->fHandle;
+    fseek(f, iPosition, SEEK_SET);
+    return(int32_t)ftell(f);
+
+} /* mySeek() */
+
+void * myOpen(const char *szFilename)
+{
+    return fopen(szFilename, "w+b");
+} /* myOpen() */
+
+void myClose(void *pHandle)
+{
+    fclose((FILE *)pHandle);
+} /* myClose() */
+
 int main(int argc, const char * argv[]) {
     int rc;
     int iDataSize, iBufferSize;
     FILE *ohandle;
-    int iWidth, iHeight, iPitch;
+    int iWidth, iHeight, iBpp, iPitch;
     uint8_t *pBitmap, *pOutput;
+    uint8_t ucPalette[1024];
     
     if (argc != 3) {
        printf("Usage: png_demo <infile.bmp> <outfile.png>\n");
        return 0;
     }
-    pBitmap = ReadBMP(argv[1], &iWidth, &iHeight);
+    printf("size of png class/struct = %d\n", sizeof(png));
+    
+    pBitmap = ReadBMP(argv[1], &iWidth, &iHeight, &iBpp, ucPalette);
     if (pBitmap == NULL)
     {
         fprintf(stderr, "Unable to open file: %s\n", argv[1]);
@@ -88,20 +135,50 @@ int main(int argc, const char * argv[]) {
     }
     
     for (int j=0; j<ITERATION_COUNT; j++) {
+        uint8_t ucBitSize = 8, ucPixelType=0, *pPalette=NULL;
         iBufferSize = iWidth * iHeight;
         pOutput = (uint8_t *)malloc(iBufferSize);
-        iPitch = iWidth * 3;
-        png.open(pOutput, iBufferSize);
-        rc = png.encodeBegin(iWidth, iHeight, PNG_PIXEL_TRUECOLOR, NULL, 9);
+        iPitch = iWidth;
+        switch (iBpp) {
+            case 8:
+            case 4:
+            case 2:
+            case 1:
+                ucPixelType = PNG_PIXEL_INDEXED;
+                iPitch = (iWidth * iBpp) >> 3;
+                pPalette = ucPalette;
+                ucBitSize = (uint8_t)iBpp;
+                break;
+            case 24:
+                ucPixelType = PNG_PIXEL_TRUECOLOR;
+                iPitch = iWidth * 3;
+                ucBitSize = 24;
+                break;
+            case 32:
+                ucPixelType = PNG_PIXEL_TRUECOLOR_ALPHA;
+                iPitch = iWidth * 4;
+                ucBitSize = 32;
+                break;
+        } // switch on pixel type
+        
+        rc = png.open(pOutput, iBufferSize);
+//        rc = png.open(argv[2], myOpen, myClose, myWrite, mySeek);
+        if (rc != PNG_SUCCESS) {
+            printf("Error opening output file %s, exiting...\n", argv[2]);
+            return -1;
+        }
+        rc = png.encodeBegin(iWidth, iHeight, ucPixelType, ucBitSize, pPalette, 9);
         if (rc == PNG_SUCCESS) {
             for (int y=0; y<iHeight && rc == PNG_SUCCESS; y++) {
                 rc = png.addLine(&pBitmap[iPitch * y]);
             }
             iDataSize = png.close();
-            ohandle = fopen(argv[2], "w+b");
-            if (ohandle != NULL) {
-                fwrite(pOutput, 1, iDataSize, ohandle);
-                fclose(ohandle);
+            if (rc == PNG_SUCCESS) { // good output, write it to a file
+                ohandle = fopen(argv[2], "w+b");
+                if (ohandle != NULL) {
+                    fwrite(pOutput, 1, iDataSize, ohandle);
+                    fclose(ohandle);
+                }
             }
             free(pOutput);
         }

@@ -89,7 +89,7 @@ enum {
 enum {
     PNG_SUCCESS = 0,
     PNG_INVALID_PARAMETER,
-    PNG_DECODE_ERROR,
+    PNG_ENCODE_ERROR,
     PNG_MEM_ERROR,
     PNG_NO_BUFFER,
     PNG_UNSUPPORTED_FEATURE,
@@ -124,6 +124,7 @@ typedef struct png_image_tag
     int iHeaderSize; // size of the PNG header
     int iCompressedSize; // size of flate output
     int iDataSize; // total output file size
+    int iMemPool; // memory allocated out of memory pool
     int iPitch; // bytes per line
     int iError;
     PNG_WRITE_CALLBACK *pfnWrite;
@@ -131,11 +132,11 @@ typedef struct png_image_tag
     PNG_OPEN_CALLBACK *pfnOpen;
     PNG_CLOSE_CALLBACK *pfnClose;
     PNGFILE PNGFile;
-    uint8_t ucZLIB[32768 + sizeof(deflate_state)]; // put this here to avoid needing malloc/free
     z_stream c_stream; /* compression stream */
-//    z_stream c_stream; /* compression stream */
     uint8_t *pPalette;
-    uint8_t ucPrevLine[PNG_MAX_BUFFERED_PIXELS * 2];
+    uint8_t ucMemPool[sizeof(deflate_state) + 65536]; // RAM needed for deflate
+    uint8_t ucPrevLine[PNG_MAX_BUFFERED_PIXELS];
+    uint8_t ucCurrLine[PNG_MAX_BUFFERED_PIXELS];
     uint8_t ucFileBuf[PNG_FILE_BUF_SIZE]; // holds temp file data
 } PNGIMAGE;
 
@@ -150,7 +151,7 @@ class PNG
     int open(const char *szFilename, PNG_OPEN_CALLBACK *pfnOpen, PNG_CLOSE_CALLBACK *pfnClose, PNG_WRITE_CALLBACK *pfnWrite, PNG_SEEK_CALLBACK *pfnSeek);
     int open(uint8_t *pOutput, int iBufferSize);
     int close();
-    int encodeBegin(int iWidth, int iHeight, uint8_t iPixelType, uint8_t *pPalette, uint8_t iCompLevel);
+    int encodeBegin(int iWidth, int iHeight, uint8_t iPixelType, uint8_t iBpp, uint8_t *pPalette, uint8_t iCompLevel);
     int addLine(uint8_t *pPixels);
     int getLastError();
 
