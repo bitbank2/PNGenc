@@ -4,11 +4,13 @@
 //
 //  Created by Larry Bank on 6/27/21.
 //
-
 #include "../src/PNGenc.h"
 
 PNG png; // static instance of class
 
+// Disable this macro to use a memory buffer to 'catch' the PNG output
+// otherwise it will write the data incrementally to the output file
+#define USE_FILES
 //
 // Read a 24-bpp BMP file into memory
 //
@@ -95,6 +97,12 @@ int32_t myWrite(PNGFILE *pFile, uint8_t *pBuf, int32_t iLen)
     return (int32_t)fwrite(pBuf, 1, iLen, ohandle);
 } /* myWrite() */
 
+int32_t myRead(PNGFILE *pFile, uint8_t *pBuf, int32_t iLen)
+{
+    FILE *ohandle = (FILE *)pFile->fHandle;
+    return (int32_t)fread(pBuf, 1, iLen, ohandle);
+} /* myRead() */
+
 int32_t mySeek(PNGFILE *pFile, int32_t iPosition)
 {
     FILE *f = (FILE *)pFile->fHandle;
@@ -116,16 +124,19 @@ void myClose(void *pHandle)
 int main(int argc, const char * argv[]) {
     int rc;
     int iDataSize, iBufferSize;
+#ifndef USE_FILES
     FILE *ohandle;
+    uint8_t *pOutput;
+#endif
     int iWidth, iHeight, iBpp, iPitch;
-    uint8_t *pBitmap, *pOutput;
+    uint8_t *pBitmap;
     uint8_t ucPalette[1024];
     
     if (argc != 3) {
        printf("Usage: png_demo <infile.bmp> <outfile.png>\n");
        return 0;
     }
-    printf("size of png class/struct = %d\n", sizeof(png));
+    printf("size of png class/struct = %d\n", (int)sizeof(png));
     
     pBitmap = ReadBMP(argv[1], &iWidth, &iHeight, &iBpp, ucPalette);
     if (pBitmap == NULL)
@@ -137,7 +148,9 @@ int main(int argc, const char * argv[]) {
     for (int j=0; j<ITERATION_COUNT; j++) {
         uint8_t ucBitSize = 8, ucPixelType=0, *pPalette=NULL;
         iBufferSize = iWidth * iHeight;
+#ifndef USE_FILES
         pOutput = (uint8_t *)malloc(iBufferSize);
+#endif
         iPitch = iWidth;
         switch (iBpp) {
             case 8:
@@ -161,8 +174,11 @@ int main(int argc, const char * argv[]) {
                 break;
         } // switch on pixel type
         
+#ifdef USE_FILES
+        rc = png.open(argv[2], myOpen, myClose, myRead, myWrite, mySeek);
+#else
         rc = png.open(pOutput, iBufferSize);
-//        rc = png.open(argv[2], myOpen, myClose, myWrite, mySeek);
+#endif
         if (rc != PNG_SUCCESS) {
             printf("Error opening output file %s, exiting...\n", argv[2]);
             return -1;
@@ -173,6 +189,8 @@ int main(int argc, const char * argv[]) {
                 rc = png.addLine(&pBitmap[iPitch * y]);
             }
             iDataSize = png.close();
+            printf("%d bytes of data written to file\n", iDataSize);
+#ifndef USE_FILES
             if (rc == PNG_SUCCESS) { // good output, write it to a file
                 ohandle = fopen(argv[2], "w+b");
                 if (ohandle != NULL) {
@@ -181,6 +199,7 @@ int main(int argc, const char * argv[]) {
                 }
             }
             free(pOutput);
+#endif
         }
     } // for j
     free(pBitmap);

@@ -18,12 +18,12 @@ void PNGFilter(uint8_t ucFilter, uint8_t *pOut, uint8_t *pCurr, uint8_t *pPrev, 
 //
 // Calculate the PNG-style CRC value for a block of data
 //
-uint32_t PNGCalcCRC(unsigned char *buf, int len)
+uint32_t PNGCalcCRC(unsigned char *buf, int len, uint32_t u32_start)
 {
 /* Table of CRCs of all 8-bit messages. */
    static uint32_t crc_table[256];
    static int crc_table_computed = 0;
-    uint32_t crc = 0xffffffff;
+    uint32_t crc = u32_start; //0xffffffff;
    int n;
 
    /* Make the table for a fast CRC. */
@@ -119,7 +119,7 @@ static int PNGStartFile(PNGIMAGE *pImage)
     p[iSize++] = 0; // compression method 0
     p[iSize++] = 0; // filter type 0
     p[iSize++] = 0; // interlace = no
-    ulCRC = PNGCalcCRC(&p[iSize-17], 17); // store CRC for IHDR chunk
+    ulCRC = PNGCalcCRC(&p[iSize-17], 17, 0xffffffff); // store CRC for IHDR chunk
     WRITEMOTO32(p, iSize, ulCRC);
     iSize += 4;
 
@@ -137,7 +137,7 @@ static int PNGStartFile(PNGIMAGE *pImage)
                p[iSize++] = pImage->pPalette[i*3+1]; // green
                p[iSize++] = pImage->pPalette[i*3+0]; // blue
            }
-           ulCRC = PNGCalcCRC(&p[iSize-(iLen*3)-4], 4+(iLen*3)); // store CRC for PLTE chunk
+           ulCRC = PNGCalcCRC(&p[iSize-(iLen*3)-4], 4+(iLen*3), 0xffffffff); // store CRC for PLTE chunk
            WRITEMOTO32(p, iSize, ulCRC);
            iSize += 4;
            if (pImage->ucTransparent >= 0 && pImage->ucTransparent < (1 << pImage->ucBpp)) // add transparency chunk
@@ -154,7 +154,7 @@ static int PNGStartFile(PNGIMAGE *pImage)
                    else
                        p[iSize++] = 255; // fully opaque
                }
-               ulCRC = PNGCalcCRC(&p[iSize - iLen - 4], 4 + iLen); // store CRC for tRNS chunk
+               ulCRC = PNGCalcCRC(&p[iSize - iLen - 4], 4 + iLen, 0xffffffff); // store CRC for tRNS chunk
                WRITEMOTO32(p, iSize, ulCRC);
                iSize += 4;
            }
@@ -180,26 +180,60 @@ makepng_exit:
 //
 int PNGEndFile(PNGIMAGE *pImage)
 {
-    int iSize;
+    int iSize=0;
     uint8_t *p;
     uint32_t ulCRC;
     
-    p = pImage->pOutput;
-    iSize = pImage->iHeaderSize;
-    WRITEMOTO32(p, iSize-8, pImage->iCompressedSize); // write IDAT chunk size
-    iSize += pImage->iCompressedSize;
-    ulCRC = PNGCalcCRC(&p[iSize-pImage->iCompressedSize-4], pImage->iCompressedSize+4); // store CRC for IDAT chunk
-    WRITEMOTO32(p, iSize, ulCRC);
-    iSize += 4;
-    // Write the IEND chunk
-    WRITEMOTO32(p, iSize, 0);
-    iSize += 4;
-    WRITEMOTO32(p, iSize, 0x49454e44/*'IEND'*/);
-    iSize += 4;
-    WRITEMOTO32(p, iSize, 0xae426082); // same CRC every time
-    iSize += 4;
+    if (pImage->pOutput) { // output buffer = easy to wrap up
+        p = pImage->pOutput;
+        iSize = pImage->iHeaderSize;
+        WRITEMOTO32(p, iSize-8, pImage->iCompressedSize); // write IDAT chunk size
+        iSize += pImage->iCompressedSize;
+        ulCRC = PNGCalcCRC(&p[iSize-pImage->iCompressedSize-4], pImage->iCompressedSize+4, 0xffffffff); // store CRC for IDAT chunk
+        WRITEMOTO32(p, iSize, ulCRC);
+        iSize += 4;
+        // Write the IEND chunk
+        WRITEMOTO32(p, iSize, 0);
+        iSize += 4;
+        WRITEMOTO32(p, iSize, 0x49454e44/*'IEND'*/);
+        iSize += 4;
+        WRITEMOTO32(p, iSize, 0xae426082); // same CRC every time
+        iSize += 4;
+    } else { // file mode = not so easy
+        uint32_t pu32[4];
+        uint8_t *p;
+        int i, iReadSize;
+        
+        p = (uint8_t *)&pu32[0];
+        iSize = pImage->iHeaderSize;
+        ulCRC = 0xffffffff;
+        (*pImage->pfnSeek)(&pImage->PNGFile, iSize-8); // seek to compressed size
+        WRITEMOTO32(p, 0, pImage->iCompressedSize); // save the actual IDAT size
+        (*pImage->pfnWrite)(&pImage->PNGFile, (uint8_t *)pu32, 4);
+        // From this point forward, we need to calculate the CRC of the IDAT chunk
+        // and unfortunately that means reading back all of the compressed data
+        i = pImage->iCompressedSize+4; // IDAT marker + data length
+        while (i) {
+            iReadSize = i;
+            if (iReadSize > PNG_FILE_BUF_SIZE)
+                iReadSize = PNG_FILE_BUF_SIZE;
+            (*pImage->pfnRead)(&pImage->PNGFile, pImage->ucFileBuf, iReadSize);
+            ulCRC = PNGCalcCRC(pImage->ucFileBuf, iReadSize, ulCRC);
+            i -= iReadSize;
+        }
+        WRITEMOTO32(p, 0, ulCRC); // now write the CRC
+        iSize += pImage->iCompressedSize + 4;
+        // Write the IEND chunk
+        WRITEMOTO32(p, 4, 0);
+        iSize += 4;
+        WRITEMOTO32(p, 8, 0x49454e44/*'IEND'*/);
+        iSize += 4;
+        WRITEMOTO32(p, 12, 0xae426082); // same CRC every time
+        iSize += 4;
+        // write the final data to the file
+        (*pImage->pfnWrite)(&pImage->PNGFile, (uint8_t *)p, 16);
+    }
     return iSize;
-
 } /* PNGEndFile() */
 //
 // My internal alloc/free functions to work on simple embedded systems

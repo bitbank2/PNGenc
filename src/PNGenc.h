@@ -106,6 +106,7 @@ typedef struct png_file_tag
 } PNGFILE;
 
 // Callback function prototypes
+typedef int32_t (PNG_READ_CALLBACK)(PNGFILE *pFile, uint8_t *pBuf, int32_t iLen);
 typedef int32_t (PNG_WRITE_CALLBACK)(PNGFILE *pFile, uint8_t *pBuf, int32_t iLen);
 typedef int32_t (PNG_SEEK_CALLBACK)(PNGFILE *pFile, int32_t iPosition);
 typedef void * (PNG_OPEN_CALLBACK)(const char *szFilename);
@@ -127,6 +128,7 @@ typedef struct png_image_tag
     int iMemPool; // memory allocated out of memory pool
     int iPitch; // bytes per line
     int iError;
+    PNG_READ_CALLBACK *pfnRead;
     PNG_WRITE_CALLBACK *pfnWrite;
     PNG_SEEK_CALLBACK *pfnSeek;
     PNG_OPEN_CALLBACK *pfnOpen;
@@ -148,7 +150,7 @@ typedef struct png_image_tag
 class PNG
 {
   public:
-    int open(const char *szFilename, PNG_OPEN_CALLBACK *pfnOpen, PNG_CLOSE_CALLBACK *pfnClose, PNG_WRITE_CALLBACK *pfnWrite, PNG_SEEK_CALLBACK *pfnSeek);
+    int open(const char *szFilename, PNG_OPEN_CALLBACK *pfnOpen, PNG_CLOSE_CALLBACK *pfnClose, PNG_READ_CALLBACK *pfnRead, PNG_WRITE_CALLBACK *pfnWrite, PNG_SEEK_CALLBACK *pfnSeek);
     int open(uint8_t *pOutput, int iBufferSize);
     int close();
     int encodeBegin(int iWidth, int iHeight, uint8_t iPixelType, uint8_t iBpp, uint8_t *pPalette, uint8_t iCompLevel);

@@ -27,9 +27,10 @@
 //
 // File (SD/MMC) based initialization
 //
-int PNG::open(const char *szFilename, PNG_OPEN_CALLBACK *pfnOpen, PNG_CLOSE_CALLBACK *pfnClose, PNG_WRITE_CALLBACK *pfnWrite, PNG_SEEK_CALLBACK *pfnSeek)
+int PNG::open(const char *szFilename, PNG_OPEN_CALLBACK *pfnOpen, PNG_CLOSE_CALLBACK *pfnClose, PNG_READ_CALLBACK *pfnRead, PNG_WRITE_CALLBACK *pfnWrite, PNG_SEEK_CALLBACK *pfnSeek)
 {
     memset(&_png, 0, sizeof(PNGIMAGE));
+    _png.pfnRead = pfnRead;
     _png.pfnWrite = pfnWrite;
     _png.pfnSeek = pfnSeek;
     _png.pfnOpen = pfnOpen;
