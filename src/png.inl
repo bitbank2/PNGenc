@@ -133,27 +133,50 @@ static int PNGStartFile(PNGIMAGE *pImage)
            iSize += 4;
            for (i=0; i<iLen; i++)
            {
-               p[iSize++] = pImage->pPalette[i*3+2]; // red
-               p[iSize++] = pImage->pPalette[i*3+1]; // green
-               p[iSize++] = pImage->pPalette[i*3+0]; // blue
+               p[iSize++] = pImage->ucPalette[i*3+2]; // red
+               p[iSize++] = pImage->ucPalette[i*3+1]; // green
+               p[iSize++] = pImage->ucPalette[i*3+0]; // blue
            }
            ulCRC = PNGCalcCRC(&p[iSize-(iLen*3)-4], 4+(iLen*3), 0xffffffff); // store CRC for PLTE chunk
            WRITEMOTO32(p, iSize, ulCRC);
            iSize += 4;
-           if (pImage->ucTransparent >= 0 && pImage->ucTransparent < (1 << pImage->ucBpp)) // add transparency chunk
+           if (pImage->iTransparent >= 0 || pImage->ucHasAlphaPalette) // add transparency chunk
            {
-               iLen = (1 << pImage->ucBpp); // palette length
+               if (pImage->ucPixelType == PNG_PIXEL_INDEXED) { // a set of palette alpha values
+                   if (pImage->ucHasAlphaPalette)
+                       iLen = (1 << pImage->ucBpp); // palette length
+                   else
+                       iLen = 1; // a single color value
+               } else if (pImage->ucPixelType == PNG_PIXEL_GRAYSCALE) {
+                   iLen = 2;
+               } else {
+                   iLen = 6; // truecolor single transparent color
+               }
                WRITEMOTO32(p, iSize, iLen); // 1 byte per palette alpha entry
                iSize += 4;
                WRITEMOTO32(p, iSize, 0x74524e53 /*'tRNS'*/);
                iSize += 4;
-               for (i = 0; i<iLen; i++) // write n alpha values to accompany the palette
-               {
-                   if (i == pImage->ucTransparent)
-                       p[iSize++] = 0; // alpha 0 = fully transparent
-                   else
-                       p[iSize++] = 255; // fully opaque
-               }
+               switch (iLen) {
+                   case 2: // grayscale
+                       p[iSize++] = 0; // 16-bit value (big endian)
+                       p[iSize++] = (uint8_t)pImage->iTransparent;
+                       break;
+                   case 6: // truecolor
+                       p[iSize++] = 0; // 16-bit value (big endian for color stimulus)
+                       p[iSize++] = (uint8_t)pImage->iTransparent & 0xff;
+                       p[iSize++] = 0;
+                       p[iSize++] = (uint8_t)((pImage->iTransparent >> 8) & 0xff);
+                       p[iSize++] = 0;
+                       p[iSize++] = (uint8_t)((pImage->iTransparent >> 16) & 0xff);
+                       p[iSize++] = 0;
+                       break;
+                   default: // palette colors
+                       for (i = 0; i<iLen; i++) // write n alpha values to accompany the palette
+                       {
+                           p[iSize++] = pImage->ucPalette[768+i];
+                       }
+                       break;
+               } // switch
                ulCRC = PNGCalcCRC(&p[iSize - iLen - 4], 4 + iLen, 0xffffffff); // store CRC for tRNS chunk
                WRITEMOTO32(p, iSize, ulCRC);
                iSize += 4;
@@ -287,10 +310,10 @@ static int PNGAddLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
         // ZLIB compression levels: 1 = fastest, 9 = most compressed (slowest)
 //        err = deflateInit(&pImage->c_stream, pImage->ucCompLevel); // might as well use max compression
         err = deflateInit2_(&pImage->c_stream, pImage->ucCompLevel, Z_DEFLATED, MAX_WBITS-2, DEF_MEM_LEVEL-2, Z_DEFAULT_STRATEGY, ZLIB_VERSION, (int)sizeof(z_stream)); // might as well use max compression
+        pImage->c_stream.total_out = 0;
+        pImage->c_stream.next_out = pImage->ucFileBuf;
+        pImage->c_stream.avail_out = PNG_FILE_BUF_SIZE;
     }
-    pImage->c_stream.total_out = 0;
-    pImage->c_stream.next_out = pImage->ucFileBuf;
-    pImage->c_stream.avail_out = PNG_FILE_BUF_SIZE;
     pImage->c_stream.next_in  = (Bytef*)pImage->ucCurrLine;
     pImage->c_stream.total_in = 0;
     pImage->c_stream.avail_in = iPitch+1; // compress entire buffer in 1 shot
@@ -305,18 +328,43 @@ static int PNGAddLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
         err = deflateEnd(&pImage->c_stream);
     }
     // Write the data to memory or a file
-    if (pImage->pOutput) { // memory
-        if ((pImage->iHeaderSize + pImage->iCompressedSize + pImage->c_stream.total_out) > pImage->iBufferSize) {
-            // output buffer not large enough
-            pImage->iError = PNG_MEM_ERROR;
-            return PNG_MEM_ERROR;
+    //
+    // A bunch of extra logic has been added below to minimize the total number
+    // of calls to 'write'. Each compressed scanline might generate only a few
+    // bytes of flate output and calling write() for a few bytes at a time can
+    // slow things to a crawl.
+    if (pImage->c_stream.total_out >= PNG_FILE_HIGHWATER) {
+        if (pImage->pOutput) { // memory
+            if ((pImage->iHeaderSize + pImage->iCompressedSize + pImage->c_stream.total_out) > pImage->iBufferSize) {
+                // output buffer not large enough
+                pImage->iError = PNG_MEM_ERROR;
+                return PNG_MEM_ERROR;
+            }
+            memcpy(&pImage->pOutput[pImage->iHeaderSize + pImage->iCompressedSize], pImage->ucFileBuf, pImage->c_stream.total_out);
+        } else { // file
+            (*pImage->pfnWrite)(&pImage->PNGFile, pImage->ucFileBuf, (int)pImage->c_stream.total_out);
         }
-        memcpy(&pImage->pOutput[pImage->iHeaderSize + pImage->iCompressedSize], pImage->ucFileBuf, pImage->c_stream.total_out);
-    } else { // file
-        (*pImage->pfnWrite)(&pImage->PNGFile, pImage->ucFileBuf, (int)pImage->c_stream.total_out);
-    }
-    pImage->iCompressedSize += (int)pImage->c_stream.total_out;
-    if (y == pImage->iHeight -1) {
+        pImage->iCompressedSize += (int)pImage->c_stream.total_out;
+        // reset zlib output buffer to start
+        pImage->c_stream.total_out = 0;
+        pImage->c_stream.next_out = pImage->ucFileBuf;
+        pImage->c_stream.avail_out = PNG_FILE_BUF_SIZE;
+    } // highwater hit
+    if (y == pImage->iHeight -1) { // last line, finish file
+        // if any remaining data in output buffer, write it
+        if (pImage->c_stream.total_out > 0) {
+            if (pImage->pOutput) { // memory
+                if ((pImage->iHeaderSize + pImage->iCompressedSize + pImage->c_stream.total_out) > pImage->iBufferSize) {
+                    // output buffer not large enough
+                    pImage->iError = PNG_MEM_ERROR;
+                    return PNG_MEM_ERROR;
+                }
+                memcpy(&pImage->pOutput[pImage->iHeaderSize + pImage->iCompressedSize], pImage->ucFileBuf, pImage->c_stream.total_out);
+            } else { // file
+                (*pImage->pfnWrite)(&pImage->PNGFile, pImage->ucFileBuf, (int)pImage->c_stream.total_out);
+            }
+            pImage->iCompressedSize += (int)pImage->c_stream.total_out;
+        }
         pImage->iDataSize = PNGEndFile(pImage);
     }    
     return PNG_SUCCESS; // DEBUG

@@ -47,6 +47,7 @@
 #endif
 /* Defines and variables */
 #define PNG_FILE_BUF_SIZE 2048
+#define PNG_FILE_HIGHWATER ((PNG_FILE_BUF_SIZE * 3)/4)
 // Number of bytes to reserve for current and previous lines
 // Defaults to 640 32-bit pixels max width
 #define PNG_MAX_BUFFERED_PIXELS (640*4 + 1)
@@ -117,8 +118,8 @@ typedef void (PNG_CLOSE_CALLBACK)(void *pHandle);
 //
 typedef struct png_image_tag
 {
-    int iWidth, iHeight, y; // image size
-    uint8_t ucBpp, ucPixelType, ucCompLevel, ucTransparent;
+    int iWidth, iHeight, y, iTransparent; // image size
+    uint8_t ucBpp, ucPixelType, ucCompLevel, ucHasAlphaPalette;
     uint8_t ucMemType;
     uint8_t *pOutput;
     int iBufferSize; // output buffer size provided by caller
@@ -135,7 +136,7 @@ typedef struct png_image_tag
     PNG_CLOSE_CALLBACK *pfnClose;
     PNGFILE PNGFile;
     z_stream c_stream; /* compression stream */
-    uint8_t *pPalette;
+    uint8_t ucPalette[1024];
     uint8_t ucMemPool[sizeof(deflate_state) + 65536]; // RAM needed for deflate
     uint8_t ucPrevLine[PNG_MAX_BUFFERED_PIXELS];
     uint8_t ucCurrLine[PNG_MAX_BUFFERED_PIXELS];
@@ -155,6 +156,8 @@ class PNG
     int close();
     int encodeBegin(int iWidth, int iHeight, uint8_t iPixelType, uint8_t iBpp, uint8_t *pPalette, uint8_t iCompLevel);
     int addLine(uint8_t *pPixels);
+    void setTransparentColor(PNGIMAGE *pPNG, uint8_t ucColor);
+    void setAlphaPalette(PNGIMAGE *pPNG, uint8_t *pPalette);
     int getLastError();
 
   private:
@@ -167,6 +170,8 @@ int PNG_openFile(PNGIMAGE *pPNG, const char *szFilename);
 int PNG_encodeBegin(PNGIMAGE *pPNG, int iWidth, int iHeight, uint8_t ucPixelType, uint8_t *pPalette, uint8_t ucCompLevel);
 void PNG_encodeEnd(PNGIMAGE *pPNG);
 int addLine(uint8_t *pPixels);
+void setTransparentColor(PNGIMAGE *pPNG, uint8_t ucColor);
+void setAlphaPalette(PNGIMAGE *pPNG, uint8_t *pPalette);
 int PNG_getLastError(PNGIMAGE *pPNG);
 #endif // __cplusplus
 

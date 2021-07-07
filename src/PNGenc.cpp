@@ -30,6 +30,7 @@
 int PNG::open(const char *szFilename, PNG_OPEN_CALLBACK *pfnOpen, PNG_CLOSE_CALLBACK *pfnClose, PNG_READ_CALLBACK *pfnRead, PNG_WRITE_CALLBACK *pfnWrite, PNG_SEEK_CALLBACK *pfnSeek)
 {
     memset(&_png, 0, sizeof(PNGIMAGE));
+    _png.iTransparent = -1;
     _png.pfnRead = pfnRead;
     _png.pfnWrite = pfnWrite;
     _png.pfnSeek = pfnSeek;
@@ -46,6 +47,8 @@ int PNG::open(const char *szFilename, PNG_OPEN_CALLBACK *pfnOpen, PNG_CLOSE_CALL
 
 int PNG::open(uint8_t *pOutput, int iBufferSize)
 {
+    memset(&_png, 0, sizeof(PNGIMAGE));
+    _png.iTransparent = -1;
     _png.pOutput = pOutput;
     _png.iBufferSize = iBufferSize;
     return PNG_SUCCESS;
@@ -74,7 +77,8 @@ int PNG::encodeBegin(int iWidth, int iHeight, uint8_t ucPixelType, uint8_t ucBpp
     _png.iHeight = iHeight;
     _png.ucPixelType = ucPixelType;
     _png.ucBpp = ucBpp;
-    _png.pPalette = pPalette;
+    if (pPalette != NULL)
+        memcpy(_png.ucPalette, pPalette, 768); // save 256 color entries
     _png.ucCompLevel = ucCompLevel;
     _png.y = 0;
     return PNG_SUCCESS;
@@ -87,3 +91,16 @@ int PNG::addLine(uint8_t *pPixels)
     _png.y++;
     return rc;
 } /* addLine() */
+
+void PNG::setTransparentColor(PNGIMAGE *pPNG, uint8_t ucColor)
+{
+    _png.iTransparent = ucColor;
+} /* setTransparentColor() */
+
+void PNG::setAlphaPalette(PNGIMAGE *pPNG, uint8_t *pPalette)
+{
+    if (pPNG != NULL && pPalette != NULL) {
+        _png.ucHasAlphaPalette = 1;
+        memcpy(&_png.ucPalette[768], pPalette, 256); // capture up to 256 alpha values
+    }
+} /* setAlphaPalette() */
