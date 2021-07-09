@@ -8,6 +8,9 @@
 
 PNG png; // static instance of class
 
+uint8_t localPalette[] = {0,0,0,0,255,0};
+uint8_t ucAlphaPalette[] = {0,255}; // first color is transparent
+
 // Disable this macro to use a memory buffer to 'catch' the PNG output
 // otherwise it will write the data incrementally to the output file
 #define USE_FILES
@@ -116,9 +119,10 @@ void * myOpen(const char *szFilename)
     return fopen(szFilename, "w+b");
 } /* myOpen() */
 
-void myClose(void *pHandle)
+void myClose(PNGFILE *pHandle)
 {
-    fclose((FILE *)pHandle);
+    FILE *f = (FILE *)pHandle->fHandle;
+    fclose(f);
 } /* myClose() */
 
 int main(int argc, const char * argv[]) {
@@ -183,13 +187,24 @@ int main(int argc, const char * argv[]) {
             printf("Error opening output file %s, exiting...\n", argv[2]);
             return -1;
         }
-        rc = png.encodeBegin(iWidth, iHeight, ucPixelType, ucBitSize, pPalette, 9);
+        rc = png.encodeBegin(128, 128, PNG_PIXEL_INDEXED, 8, localPalette, 9);
+        png.setAlphaPalette(ucAlphaPalette);
+//        rc = png.encodeBegin(iWidth, iHeight, ucPixelType, ucBitSize, pPalette, 9);
         if (rc == PNG_SUCCESS) {
-            for (int y=0; y<iHeight && rc == PNG_SUCCESS; y++) {
-                rc = png.addLine(&pBitmap[iPitch * y]);
+            for (int y=0; y<128/*iHeight*/ && rc == PNG_SUCCESS; y++) {
+                uint8_t ucLine[128];
+                if (y==0 || y == 127) {
+                  memset(ucLine, 1, 128); // top+bottom red lines
+                } else {
+                  memset(ucLine, 0, 128);
+                  ucLine[0] = ucLine[127] = 1; // left/right border
+                  ucLine[y] = ucLine[127-y] = 1; // X in the middle
+                }
+                rc = png.addLine(ucLine);
+               // rc = png.addLine(&pBitmap[iPitch * y]);
             }
             iDataSize = png.close();
-            printf("%d bytes of data written to file\n", iDataSize);
+            printf("%d bytes of compressed data written to file\n", iDataSize);
 #ifndef USE_FILES
             if (rc == PNG_SUCCESS) { // good output, write it to a file
                 ohandle = fopen(argv[2], "w+b");

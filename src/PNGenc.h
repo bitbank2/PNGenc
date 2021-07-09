@@ -45,6 +45,12 @@
 #define FALSE 0
 #define TRUE 1
 #endif
+// Number of bits to reduce the zlib window size
+// 0 = 256K + 6K needed
+// 1 = 128K + 6K needed
+// 2 = 64K ...
+#define MEM_SHRINK 3
+
 /* Defines and variables */
 #define PNG_FILE_BUF_SIZE 2048
 #define PNG_FILE_HIGHWATER ((PNG_FILE_BUF_SIZE * 3)/4)
@@ -111,7 +117,7 @@ typedef int32_t (PNG_READ_CALLBACK)(PNGFILE *pFile, uint8_t *pBuf, int32_t iLen)
 typedef int32_t (PNG_WRITE_CALLBACK)(PNGFILE *pFile, uint8_t *pBuf, int32_t iLen);
 typedef int32_t (PNG_SEEK_CALLBACK)(PNGFILE *pFile, int32_t iPosition);
 typedef void * (PNG_OPEN_CALLBACK)(const char *szFilename);
-typedef void (PNG_CLOSE_CALLBACK)(void *pHandle);
+typedef void (PNG_CLOSE_CALLBACK)(PNGFILE *pFile);
 
 //
 // our private structure to hold a JPEG image decode state
@@ -137,7 +143,7 @@ typedef struct png_image_tag
     PNGFILE PNGFile;
     z_stream c_stream; /* compression stream */
     uint8_t ucPalette[1024];
-    uint8_t ucMemPool[sizeof(deflate_state) + 65536]; // RAM needed for deflate
+    uint8_t ucMemPool[sizeof(deflate_state) + (0x40000 >> MEM_SHRINK)]; // RAM needed for deflate
     uint8_t ucPrevLine[PNG_MAX_BUFFERED_PIXELS];
     uint8_t ucCurrLine[PNG_MAX_BUFFERED_PIXELS];
     uint8_t ucFileBuf[PNG_FILE_BUF_SIZE]; // holds temp file data
@@ -156,8 +162,8 @@ class PNG
     int close();
     int encodeBegin(int iWidth, int iHeight, uint8_t iPixelType, uint8_t iBpp, uint8_t *pPalette, uint8_t iCompLevel);
     int addLine(uint8_t *pPixels);
-    void setTransparentColor(PNGIMAGE *pPNG, uint8_t ucColor);
-    void setAlphaPalette(PNGIMAGE *pPNG, uint8_t *pPalette);
+    int setTransparentColor(uint32_t u32Color);
+    int setAlphaPalette(uint8_t *pPalette);
     int getLastError();
 
   private:
@@ -169,9 +175,9 @@ int PNG_openRAM(PNGIMAGE *pPNG, uint8_t *pData, int iDataSize);
 int PNG_openFile(PNGIMAGE *pPNG, const char *szFilename);
 int PNG_encodeBegin(PNGIMAGE *pPNG, int iWidth, int iHeight, uint8_t ucPixelType, uint8_t *pPalette, uint8_t ucCompLevel);
 void PNG_encodeEnd(PNGIMAGE *pPNG);
-int addLine(uint8_t *pPixels);
-void setTransparentColor(PNGIMAGE *pPNG, uint8_t ucColor);
-void setAlphaPalette(PNGIMAGE *pPNG, uint8_t *pPalette);
+int addLine(PNGIMAGE *uint8_t *pPixels);
+int setTransparentColor(PNGIMAGE *pPNG, uint32_t u32Color);
+int setAlphaPalette(PNGIMAGE *pPNG, uint8_t *pPalette);
 int PNG_getLastError(PNGIMAGE *pPNG);
 #endif // __cplusplus
 

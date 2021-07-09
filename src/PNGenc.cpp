@@ -67,7 +67,7 @@ int PNG::getLastError()
 int PNG::close()
 {
     if (_png.pfnClose)
-        (*_png.pfnClose)(_png.PNGFile.fHandle);
+        (*_png.pfnClose)(&_png.PNGFile);
     return _png.iDataSize;
 } /* close() */
 
@@ -92,15 +92,22 @@ int PNG::addLine(uint8_t *pPixels)
     return rc;
 } /* addLine() */
 
-void PNG::setTransparentColor(PNGIMAGE *pPNG, uint8_t ucColor)
+int PNG::setTransparentColor(uint32_t u32Color)
 {
-    _png.iTransparent = ucColor;
+    if (_png.ucPixelType == PNG_PIXEL_GRAYSCALE || _png.ucPixelType == PNG_PIXEL_TRUECOLOR) {
+        _png.iTransparent = u32Color;
+        return PNG_SUCCESS;
+    }
+    else
+        return PNG_INVALID_PARAMETER; // indexed image must have palette alpha values
 } /* setTransparentColor() */
 
-void PNG::setAlphaPalette(PNGIMAGE *pPNG, uint8_t *pPalette)
+int PNG::setAlphaPalette(uint8_t *pPalette)
 {
-    if (pPNG != NULL && pPalette != NULL) {
+    if (pPalette != NULL && _png.ucPixelType == PNG_PIXEL_INDEXED) {
         _png.ucHasAlphaPalette = 1;
         memcpy(&_png.ucPalette[768], pPalette, 256); // capture up to 256 alpha values
+        return PNG_SUCCESS;
     }
+    return PNG_INVALID_PARAMETER;
 } /* setAlphaPalette() */

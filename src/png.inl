@@ -143,10 +143,7 @@ static int PNGStartFile(PNGIMAGE *pImage)
            if (pImage->iTransparent >= 0 || pImage->ucHasAlphaPalette) // add transparency chunk
            {
                if (pImage->ucPixelType == PNG_PIXEL_INDEXED) { // a set of palette alpha values
-                   if (pImage->ucHasAlphaPalette)
-                       iLen = (1 << pImage->ucBpp); // palette length
-                   else
-                       iLen = 1; // a single color value
+                    iLen = (1 << pImage->ucBpp); // palette length
                } else if (pImage->ucPixelType == PNG_PIXEL_GRAYSCALE) {
                    iLen = 2;
                } else {
@@ -309,7 +306,7 @@ static int PNGAddLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
         pImage->iMemPool = 0;
         // ZLIB compression levels: 1 = fastest, 9 = most compressed (slowest)
 //        err = deflateInit(&pImage->c_stream, pImage->ucCompLevel); // might as well use max compression
-        err = deflateInit2_(&pImage->c_stream, pImage->ucCompLevel, Z_DEFLATED, MAX_WBITS-2, DEF_MEM_LEVEL-2, Z_DEFAULT_STRATEGY, ZLIB_VERSION, (int)sizeof(z_stream)); // might as well use max compression
+        err = deflateInit2_(&pImage->c_stream, pImage->ucCompLevel, Z_DEFLATED, MAX_WBITS-MEM_SHRINK, DEF_MEM_LEVEL-MEM_SHRINK, Z_DEFAULT_STRATEGY, ZLIB_VERSION, (int)sizeof(z_stream)); // might as well use max compression
         pImage->c_stream.total_out = 0;
         pImage->c_stream.next_out = pImage->ucFileBuf;
         pImage->c_stream.avail_out = PNG_FILE_BUF_SIZE;
