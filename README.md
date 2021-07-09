@@ -1,4 +1,4 @@
-PNGdec
+PNGenc
 ------
 Copyright (c) 2021 BitBank Software, Inc.<br>
 Written by Larry Bank<br>
@@ -6,7 +6,7 @@ bitbank@pobox.com<br>
 
 What is it?
 ------------
-An 'embedded-friendly' (aka Arduino) PNG image decoding library<br>
+An 'embedded-friendly' (aka Arduino) PNG image encoding library<br>
 <br>
 
 Why did you write it?
@@ -16,29 +16,24 @@ Starting in the late 80's I wrote my own imaging codecs for the existing standar
 
 What's special about it?<br>
 ------------------------
-The PNG image specification was written at a time when computers had megabytes of RAM and conserving memory wasn't a big priority. The memory allocated for decoding the compressed data (zlib) and for holding the uncompressed image can be quite a bit more than is available on modern microcontrollers (usually measured in K bytes). Three goals for this project are: easy to compile+use on all embedded systems, use a minimal amount of RAM and be self-contained. One of the dependencies I like to remove when working on embedded software is malloc/free. When compiling on a system with a tiny amount of RAM, heap memory management might not even exist.<br>
+The PNG image specification was written at a time when computers had megabytes of RAM and conserving memory wasn't a big priority. The memory allocated for encoding the compressed data (zlib) and for holding the uncompressed image can be quite a bit more than is available on modern microcontrollers (usually measured in K bytes). Three goals for this project are: easy to compile+use on all embedded systems, use a minimal amount of RAM and be self-contained. One of the dependencies I like to remove when working on embedded software is malloc/free. When compiling on a system with a tiny amount of RAM, heap memory management might not even exist.<br>
 
 Feature summary:<br>
 ----------------<br>
-- Runs on any MCU with at least 48K of free RAM<br>
+- Runs on any MCU with at least 45K of free RAM<br>
 - No external dependencies (including malloc/free)<br>
-- Decode an image line by line with a callback function<br>
-- Decode an image to a user supplied buffer (no callback needed)<br>
-- Supports all standard options except interlacing (too much RAM needed)<br>
-- Function provided to turn any pixel format into RGB565 for LCD displays<br>
-- Optionally disable zlib's internal CRC check - improves speed by 10-30%
+- Encode an image line by line<br>
+- Allows encoding pixels of type grayscale, indexed, truecolor or truecolor+alpha
+- Supports up to 8-bits per color stimulus<br>
+- Allows defining a transparent color or alpha palette values<br>
+- Allows control of the zlib compression effort amount (1-9)
 - Arduino-style C++ library class with simple API<br>
 - Can by built as straight C as well<br>
 <br>
 
 How fast is it?<br>
 ---------------<br>
-The examples folder contains a sketch to measure the performance of decoding a 240x200 image of varying bit depths. Here's the results when run on a few common MCUs:<br>
-
-<br>
-<p align="center">
-  <img width="770" height="201" src="https://github.com/bitbank2/PNGdec/blob/master/perf_small.png?raw=true">
-</p>
+The examples folder contains a sketch to measure the performance of encoding a 128x128 image generated dynamically.<br>
 
 Documentation:<br>
 ---------------<br>
