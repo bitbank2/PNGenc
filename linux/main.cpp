@@ -3,6 +3,9 @@
 //  pngenc_test
 //
 //  Created by Larry Bank on 6/27/21.
+//  Demonstrates the PNGenc library
+//  by either compressing a given BMP file
+//  or generating one dynamically
 //
 #include "../src/PNGenc.h"
 
@@ -13,9 +16,10 @@ uint8_t ucAlphaPalette[] = {0,255}; // first color is transparent
 
 // Disable this macro to use a memory buffer to 'catch' the PNG output
 // otherwise it will write the data incrementally to the output file
+// using the 5 user-defined callback functions
 #define USE_FILES
 //
-// Read a 24-bpp BMP file into memory
+// Read a Windows BMP file into memory
 //
 uint8_t * ReadBMP(const char *fname, int *width, int *height, int *bpp, unsigned char *pPal)
 {
@@ -126,7 +130,7 @@ void myClose(PNGFILE *pHandle)
 } /* myClose() */
 
 int main(int argc, const char * argv[]) {
-    int rc;
+    int rc, iOutIndex;
     int iDataSize, iBufferSize;
 #ifndef USE_FILES
     FILE *ohandle;
@@ -135,22 +139,43 @@ int main(int argc, const char * argv[]) {
     int iWidth, iHeight, iBpp, iPitch;
     uint8_t *pBitmap;
     uint8_t ucPalette[1024];
+    uint8_t ucBitSize = 8, ucPixelType=0, *pPalette=NULL;
     
-    if (argc != 3) {
+    if (argc != 3 && argc != 2) {
+       printf("PNG encoder library demo program\n");
        printf("Usage: png_demo <infile.bmp> <outfile.png>\n");
+       printf("\nor (to generate an image dynamically)\n       png_demo <outfile.png>\n");
        return 0;
     }
-    printf("size of png class/struct = %d\n", (int)sizeof(png));
+    printf("RAM needed for png class/struct = %d bytes\n", (int)sizeof(png));
     
-    pBitmap = ReadBMP(argv[1], &iWidth, &iHeight, &iBpp, ucPalette);
-    if (pBitmap == NULL)
-    {
-        fprintf(stderr, "Unable to open file: %s\n", argv[1]);
-        return -1; // bad filename passed?
+    if (argc == 3) {
+       iOutIndex = 2; // argv index of output filename
+       pBitmap = ReadBMP(argv[1], &iWidth, &iHeight, &iBpp, ucPalette);
+       if (pBitmap == NULL)
+       {
+           fprintf(stderr, "Unable to open file: %s\n", argv[1]);
+           return -1; // bad filename passed?
+       }
+    } else { // create the bitmap in code
+       iOutIndex = 1;  // argv index of output filename
+       iWidth = iHeight = 128;
+       iPitch = iWidth;
+       iBpp = 8;
+       memcpy(ucPalette, localPalette, sizeof(localPalette));
+       pBitmap = (uint8_t *)malloc(128*128);
+       for (int y=0; y<iHeight; y++) {
+           uint8_t *pLine = &pBitmap[iPitch*y];
+           if (y==0 || y == iHeight-1) {
+               memset(pLine, 1, iWidth); // top+bottom red lines
+           } else {
+               memset(pLine, 0, iWidth);
+               pLine[0] = pLine[iWidth-1] = 1; // left/right border
+               pLine[y] = pLine[iWidth-1-y] = 1; // X in the middle
+           }
+       } // for y
     }
-    
     for (int j=0; j<ITERATION_COUNT; j++) {
-        uint8_t ucBitSize = 8, ucPixelType=0, *pPalette=NULL;
         iBufferSize = iWidth * iHeight;
 #ifndef USE_FILES
         pOutput = (uint8_t *)malloc(iBufferSize);
@@ -179,35 +204,27 @@ int main(int argc, const char * argv[]) {
         } // switch on pixel type
         
 #ifdef USE_FILES
-        rc = png.open(argv[2], myOpen, myClose, myRead, myWrite, mySeek);
+        rc = png.open(argv[iOutIndex], myOpen, myClose, myRead, myWrite, mySeek);
 #else
         rc = png.open(pOutput, iBufferSize);
 #endif
         if (rc != PNG_SUCCESS) {
-            printf("Error opening output file %s, exiting...\n", argv[2]);
+            printf("Error opening output file %s, exiting...\n", argv[iOutIndex]);
             return -1;
         }
-        rc = png.encodeBegin(128, 128, PNG_PIXEL_INDEXED, 8, localPalette, 9);
-        png.setAlphaPalette(ucAlphaPalette);
-//        rc = png.encodeBegin(iWidth, iHeight, ucPixelType, ucBitSize, pPalette, 9);
+        rc = png.encodeBegin(iWidth, iHeight, ucPixelType, ucBitSize, pPalette, 9);
+        if (argc == 2)
+            png.setAlphaPalette(ucAlphaPalette);
+
         if (rc == PNG_SUCCESS) {
-            for (int y=0; y<128/*iHeight*/ && rc == PNG_SUCCESS; y++) {
-                uint8_t ucLine[128];
-                if (y==0 || y == 127) {
-                  memset(ucLine, 1, 128); // top+bottom red lines
-                } else {
-                  memset(ucLine, 0, 128);
-                  ucLine[0] = ucLine[127] = 1; // left/right border
-                  ucLine[y] = ucLine[127-y] = 1; // X in the middle
-                }
-                rc = png.addLine(ucLine);
-               // rc = png.addLine(&pBitmap[iPitch * y]);
+            for (int y=0; y<iHeight && rc == PNG_SUCCESS; y++) {
+                rc = png.addLine(&pBitmap[iPitch * y]);
             }
             iDataSize = png.close();
-            printf("%d bytes of compressed data written to file\n", iDataSize);
+            printf("PNG image successfully created (%d bytes)\n", iDataSize);
 #ifndef USE_FILES
             if (rc == PNG_SUCCESS) { // good output, write it to a file
-                ohandle = fopen(argv[2], "w+b");
+                ohandle = fopen(argv[iOutIndex], "w+b");
                 if (ohandle != NULL) {
                     fwrite(pOutput, 1, iDataSize, ohandle);
                     fclose(ohandle);

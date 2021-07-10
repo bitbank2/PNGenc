@@ -191,7 +191,6 @@ static int PNGStartFile(PNGIMAGE *pImage)
     } else { // write it to the file
         (*pImage->pfnWrite)(&pImage->PNGFile, pImage->ucFileBuf, iSize);
     }
-makepng_exit:
     return iError;
     
 } /* PNGStartFile() */
