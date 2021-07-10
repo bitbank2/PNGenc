@@ -81,16 +81,6 @@ enum {
     PNG_PIXEL_GRAY_ALPHA=4,
     PNG_PIXEL_TRUECOLOR_ALPHA=6
 };
-// RGB565 endianness
-enum {
-    PNG_RGB565_LITTLE_ENDIAN = 0,
-    PNG_RGB565_BIG_ENDIAN
-};
-
-enum {
-    PNG_MEM_RAM=0,
-    PNG_MEM_FLASH
-};
 
 // Error codes returned by getLastError()
 enum {
