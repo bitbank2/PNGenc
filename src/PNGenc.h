@@ -165,7 +165,7 @@ int PNG_openRAM(PNGIMAGE *pPNG, uint8_t *pData, int iDataSize);
 int PNG_openFile(PNGIMAGE *pPNG, const char *szFilename);
 int PNG_encodeBegin(PNGIMAGE *pPNG, int iWidth, int iHeight, uint8_t ucPixelType, uint8_t *pPalette, uint8_t ucCompLevel);
 void PNG_encodeEnd(PNGIMAGE *pPNG);
-int addLine(PNGIMAGE *uint8_t *pPixels);
+int addLine(PNGIMAGE *, uint8_t *pPixels);
 int setTransparentColor(PNGIMAGE *pPNG, uint32_t u32Color);
 int setAlphaPalette(PNGIMAGE *pPNG, uint8_t *pPalette);
 int PNG_getLastError(PNGIMAGE *pPNG);
