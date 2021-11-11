@@ -54,8 +54,7 @@ uint32_t PNGCalcCRC(unsigned char *buf, int len, uint32_t u32_start)
      {
          crc = crc_table[(crc ^ buf[n]) & 0xff] ^ (crc >> 8);
      }
-
-  return crc ^ 0xffffffffL;
+return crc;  //return crc ^ 0xffffffffL precludes chaining the calculation of packets for IDAT chunck;
 
 } /* PNGCalcCRC() */
 
@@ -120,7 +119,8 @@ static int PNGStartFile(PNGIMAGE *pImage)
     p[iSize++] = 0; // filter type 0
     p[iSize++] = 0; // interlace = no
     ulCRC = PNGCalcCRC(&p[iSize-17], 17, 0xffffffff); // store CRC for IHDR chunk
-    WRITEMOTO32(p, iSize, ulCRC);
+    ulCRC=ulCRC ^ 0xffffffffL;// terminate CRC for IHDR chunk
+	WRITEMOTO32(p, iSize, ulCRC);
     iSize += 4;
 
     if (pImage->ucPixelType == PNG_PIXEL_INDEXED)
@@ -138,7 +138,8 @@ static int PNGStartFile(PNGIMAGE *pImage)
                p[iSize++] = pImage->ucPalette[i*3+0]; // blue
            }
            ulCRC = PNGCalcCRC(&p[iSize-(iLen*3)-4], 4+(iLen*3), 0xffffffff); // store CRC for PLTE chunk
-           WRITEMOTO32(p, iSize, ulCRC);
+           ulCRC=ulCRC ^ 0xffffffffL;// terminate CRC for PLTE chunk
+	WRITEMOTO32(p, iSize, ulCRC);
            iSize += 4;
            if (pImage->iTransparent >= 0 || pImage->ucHasAlphaPalette) // add transparency chunk
            {
@@ -175,7 +176,8 @@ static int PNGStartFile(PNGIMAGE *pImage)
                        break;
                } // switch
                ulCRC = PNGCalcCRC(&p[iSize - iLen - 4], 4 + iLen, 0xffffffff); // store CRC for tRNS chunk
-               WRITEMOTO32(p, iSize, ulCRC);
+               ulCRC=ulCRC ^ 0xffffffffL;// terminate CRC for tRNS chunk
+		WRITEMOTO32(p, iSize, ulCRC);
                iSize += 4;
            }
        }
@@ -209,7 +211,8 @@ int PNGEndFile(PNGIMAGE *pImage)
         WRITEMOTO32(p, iSize-8, pImage->iCompressedSize); // write IDAT chunk size
         iSize += pImage->iCompressedSize;
         ulCRC = PNGCalcCRC(&p[iSize-pImage->iCompressedSize-4], pImage->iCompressedSize+4, 0xffffffff); // store CRC for IDAT chunk
-        WRITEMOTO32(p, iSize, ulCRC);
+        ulCRC=ulCRC ^ 0xffffffffL;// terminate CRC for IDAT chunk
+	WRITEMOTO32(p, iSize, ulCRC);
         iSize += 4;
         // Write the IEND chunk
         WRITEMOTO32(p, iSize, 0);
@@ -240,7 +243,8 @@ int PNGEndFile(PNGIMAGE *pImage)
             ulCRC = PNGCalcCRC(pImage->ucFileBuf, iReadSize, ulCRC);
             i -= iReadSize;
         }
-        WRITEMOTO32(p, 0, ulCRC); // now write the CRC
+        ulCRC=ulCRC ^ 0xffffffffL;// terminate CRC for IDAT chunk
+	WRITEMOTO32(p, 0, ulCRC); // now write the CRC
         iSize += pImage->iCompressedSize + 4;
         // Write the IEND chunk
         WRITEMOTO32(p, 4, 0);
