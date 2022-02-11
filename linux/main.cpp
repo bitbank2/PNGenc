@@ -160,18 +160,20 @@ int main(int argc, const char * argv[]) {
     } else { // create the bitmap in code
        iOutIndex = 1;  // argv index of output filename
        iWidth = iHeight = 128;
-       iPitch = iWidth;
+       iPitch = iWidth*sizeof(uint16_t); // create a RGB565 image
        iBpp = 8;
-       memcpy(ucPalette, localPalette, sizeof(localPalette));
-       pBitmap = (uint8_t *)malloc(128*128);
+       //memcpy(ucPalette, localPalette, sizeof(localPalette));
+       pBitmap = (uint8_t *)malloc(128*128*sizeof(uint16_t));
        for (int y=0; y<iHeight; y++) {
-           uint8_t *pLine = &pBitmap[iPitch*y];
+           uint16_t *pLine = (uint16_t *)&pBitmap[iPitch*y];
            if (y==0 || y == iHeight-1) {
-               memset(pLine, 1, iWidth); // top+bottom red lines
+               for (int x=0; x<iWidth; x++) { // top+bottom red lines
+                   pLine[x] = 0xf800; // pure red
+               } // for x
            } else {
-               memset(pLine, 0, iWidth);
-               pLine[0] = pLine[iWidth-1] = 1; // left/right border
-               pLine[y] = pLine[iWidth-1-y] = 1; // X in the middle
+               memset(pLine, 0, iWidth*sizeof(uint16_t)); // black background
+               pLine[0] = pLine[iWidth-1] = 0xf800; // left/right border = red
+               pLine[y] = pLine[iWidth-1-y] = 0x1f; // blue X in the middle
            }
        } // for y
     }
@@ -212,13 +214,19 @@ int main(int argc, const char * argv[]) {
             printf("Error opening output file %s, exiting...\n", argv[iOutIndex]);
             return -1;
         }
-        rc = png.encodeBegin(iWidth, iHeight, ucPixelType, ucBitSize, pPalette, 9);
-        if (argc == 2)
-            png.setAlphaPalette(ucAlphaPalette);
+        if (argc == 3)
+           rc = png.encodeBegin(iWidth, iHeight, ucPixelType, ucBitSize, pPalette, 9);
+        else
+           rc = png.encodeBegin(iWidth, iHeight, PNG_PIXEL_TRUECOLOR, 24, NULL, 9);
+//        if (argc == 2)
+//            png.setAlphaPalette(ucAlphaPalette);
 
         if (rc == PNG_SUCCESS) {
             for (int y=0; y<iHeight && rc == PNG_SUCCESS; y++) {
-                rc = png.addLine(&pBitmap[iPitch * y]);
+                if (argc == 3)
+                    rc = png.addLine(&pBitmap[iPitch * y]);
+                else
+                    rc = png.addRGB565Line((uint16_t *)&pBitmap[iWidth*sizeof(uint16_t)*y], (void *)ucPalette); // use palette as temporary buffer for internal pixel conversion
             }
             iDataSize = png.close();
             printf("PNG image successfully created (%d bytes)\n", iDataSize);

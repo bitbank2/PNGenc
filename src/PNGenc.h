@@ -152,6 +152,7 @@ class PNG
     int close();
     int encodeBegin(int iWidth, int iHeight, uint8_t iPixelType, uint8_t iBpp, uint8_t *pPalette, uint8_t iCompLevel);
     int addLine(uint8_t *pPixels);
+    int addRGB565Line(uint16_t *pPixels, void *pTempLine);
     int setTransparentColor(uint32_t u32Color);
     int setAlphaPalette(uint8_t *pPalette);
     int getLastError();
@@ -165,9 +166,10 @@ int PNG_openRAM(PNGIMAGE *pPNG, uint8_t *pData, int iDataSize);
 int PNG_openFile(PNGIMAGE *pPNG, const char *szFilename);
 int PNG_encodeBegin(PNGIMAGE *pPNG, int iWidth, int iHeight, uint8_t ucPixelType, uint8_t *pPalette, uint8_t ucCompLevel);
 void PNG_encodeEnd(PNGIMAGE *pPNG);
-int addLine(PNGIMAGE *, uint8_t *pPixels);
-int setTransparentColor(PNGIMAGE *pPNG, uint32_t u32Color);
-int setAlphaPalette(PNGIMAGE *pPNG, uint8_t *pPalette);
+int PNG_addLine(PNGIMAGE *, uint8_t *pPixels, int y);
+int PNG_addRGB565Line(PNGIMAGE *, uint16_t *pPixels, void *pTempLine, int y);
+int PNG_setTransparentColor(PNGIMAGE *pPNG, uint32_t u32Color);
+int PNG_setAlphaPalette(PNGIMAGE *pPNG, uint8_t *pPalette);
 int PNG_getLastError(PNGIMAGE *pPNG);
 #endif // __cplusplus
 

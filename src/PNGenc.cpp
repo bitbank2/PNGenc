@@ -87,10 +87,18 @@ int PNG::encodeBegin(int iWidth, int iHeight, uint8_t ucPixelType, uint8_t ucBpp
 int PNG::addLine(uint8_t *pPixels)
 {
     int rc;
-    rc = PNGAddLine(&_png, pPixels, _png.y);
+    rc = PNG_addLine(&_png, pPixels, _png.y);
     _png.y++;
     return rc;
 } /* addLine() */
+
+int PNG::addRGB565Line(uint16_t *pPixels, void *pTempLine)
+{
+    int rc;
+    rc = PNG_addRGB565Line(&_png, pPixels, pTempLine, _png.y);
+    _png.y++;
+    return rc;
+} /* addRGB565Line() */
 
 int PNG::setTransparentColor(uint32_t u32Color)
 {
