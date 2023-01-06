@@ -187,12 +187,19 @@ int main(int argc, const char * argv[]) {
             case 8:
             case 4:
             case 2:
-            case 1:
                 ucPixelType = PNG_PIXEL_INDEXED;
                 iPitch = (iWidth * iBpp) >> 3;
                 pPalette = ucPalette;
                 ucBitSize = (uint8_t)iBpp;
                 break;
+
+            case 1:
+                ucPixelType = PNG_PIXEL_GRAYSCALE;
+                iPitch = (iWidth * iBpp) >> 3;
+                pPalette = NULL;
+                ucBitSize = (uint8_t)iBpp;
+                break;
+
             case 24:
                 ucPixelType = PNG_PIXEL_TRUECOLOR;
                 iPitch = iWidth * 3;

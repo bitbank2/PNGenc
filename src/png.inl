@@ -281,7 +281,20 @@ void ZLIB_INTERNAL myfree (voidpf opaque, voidpf ptr)
 // incrementally to the output file. This allows the system to not need an
 // input nor output buffer larger than 2 lines of image data
 //
-static int PNG_addLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
+int PNG_encodeBegin(PNGIMAGE *pPNG, int iWidth, int iHeight, uint8_t ucPixelType, uint8_t ucBpp, uint8_t *pPalette, uint8_t ucCompLevel)
+{
+    pPNG->iWidth = iWidth;
+    pPNG->iHeight = iHeight;
+    pPNG->ucPixelType = ucPixelType;
+    pPNG->ucBpp = ucBpp;
+    if (pPalette != NULL)
+        memcpy(pPNG->ucPalette, pPalette, 768); // save 256 color entries
+    pPNG->ucCompLevel = ucCompLevel;
+    pPNG->y = 0;
+    return PNG_SUCCESS;
+} /* PNG_encodeBegin() */
+
+int PNG_addLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
 {
     unsigned char ucFilter; // filter type
     unsigned char *pOut;
@@ -311,13 +324,13 @@ static int PNG_addLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
 //        err = deflateInit(&pImage->c_stream, pImage->ucCompLevel); // might as well use max compression
         err = deflateInit2_(&pImage->c_stream, pImage->ucCompLevel, Z_DEFLATED, MAX_WBITS-MEM_SHRINK, DEF_MEM_LEVEL-MEM_SHRINK, Z_DEFAULT_STRATEGY, ZLIB_VERSION, (int)sizeof(z_stream)); // might as well use max compression
         pImage->c_stream.total_out = 0;
+        pImage->c_stream.total_in = 0;
         pImage->c_stream.next_out = pImage->ucFileBuf;
         pImage->c_stream.avail_out = PNG_FILE_BUF_SIZE;
     }
     pImage->c_stream.next_in  = (Bytef*)pImage->ucCurrLine;
-    pImage->c_stream.total_in = 0;
     pImage->c_stream.avail_in = iPitch+1; // compress entire buffer in 1 shot
-    err = deflate(&pImage->c_stream, Z_SYNC_FLUSH);
+    err = deflate(&pImage->c_stream, Z_NO_FLUSH);
     if (err != Z_OK) { // something went wrong with the data compression, stop
         pImage->iError = PNG_ENCODE_ERROR;
         return PNG_ENCODE_ERROR;
@@ -377,7 +390,7 @@ static int PNG_addLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
 // The input pixels are RGB565 (not supported by PNG) and are converted into the
 // format requested by the iPixelType param in the call to encodeBegin()
 //
-static int PNG_addRGB565Line(PNGIMAGE *pImage, uint16_t *pRGB565, void *pTempLine, int y)
+int PNG_addRGB565Line(PNGIMAGE *pImage, uint16_t *pRGB565, void *pTempLine, int y)
 {
     unsigned char ucFilter; // filter type
     unsigned char *pOut, *pSrc;
@@ -510,7 +523,7 @@ uint32_t ulMin;
     for (i=0; i<iPitch; i++)
     {
        ucDiff = pCurr[i]; // no filter
-       ulSum[0] += (ucDiff < 128) ? ucDiff: 256 - ucDiff;
+        ulSum[0] += (ucDiff < 128) ? ucDiff: 256 - ucDiff;
        // Sub
        if (i >= iStride)
        {
@@ -661,3 +674,36 @@ int j;
          break;
       } // switch
 } /* PNGFilter() */
+
+int PNG_openRAM(PNGIMAGE *pPNG, uint8_t *pData, int iDataSize)
+{
+    memset(pPNG, 0, sizeof(PNGIMAGE));
+    pPNG->iTransparent = -1;
+    pPNG->pOutput = pData;
+    pPNG->iBufferSize = iDataSize;
+    return PNG_SUCCESS;
+} /* PNG_openRAM() */
+
+int PNG_openFile(PNGIMAGE *pPNG, const char *szFilename, PNG_OPEN_CALLBACK *pfnOpen, PNG_CLOSE_CALLBACK *pfnClose, PNG_READ_CALLBACK *pfnRead, PNG_WRITE_CALLBACK *pfnWrite, PNG_SEEK_CALLBACK *pfnSeek)
+{
+    memset(pPNG, 0, sizeof(PNGIMAGE));
+    pPNG->iTransparent = -1;
+    pPNG->pfnRead = pfnRead;
+    pPNG->pfnWrite = pfnWrite;
+    pPNG->pfnSeek = pfnSeek;
+    pPNG->pfnOpen = pfnOpen;
+    pPNG->pfnClose = pfnClose;
+    pPNG->PNGFile.fHandle = (*pfnOpen)(szFilename);
+    if (pPNG->PNGFile.fHandle == NULL) {
+        pPNG->iError = PNG_INVALID_FILE;
+       return PNG_INVALID_FILE;
+    }
+    return PNG_SUCCESS;
+} /* PNG_openFile() */
+
+int PNG_close(PNGIMAGE *pPNG)
+{
+    if (pPNG->pfnClose)
+        (*pPNG->pfnClose)(&pPNG->PNGFile);
+    return pPNG->iDataSize;
+} /* PNG_close() */

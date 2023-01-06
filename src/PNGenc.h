@@ -49,7 +49,11 @@
 // 0 = 256K + 6K needed
 // 1 = 128K + 6K needed
 // 2 = 64K ...
+#if defined( __LINUX__ ) || defined (__MACH__)
+#define MEM_SHRINK 0
+#else
 #define MEM_SHRINK 3
+#endif
 
 /* Defines and variables */
 #define PNG_FILE_BUF_SIZE 2048
@@ -163,8 +167,9 @@ class PNG
 #else
 #define PNG_STATIC
 int PNG_openRAM(PNGIMAGE *pPNG, uint8_t *pData, int iDataSize);
-int PNG_openFile(PNGIMAGE *pPNG, const char *szFilename);
-int PNG_encodeBegin(PNGIMAGE *pPNG, int iWidth, int iHeight, uint8_t ucPixelType, uint8_t *pPalette, uint8_t ucCompLevel);
+int PNG_openFile(PNGIMAGE *pPNG, const char *szFilename, PNG_OPEN_CALLBACK *pfnOpen, PNG_CLOSE_CALLBACK *pfnClose, PNG_READ_CALLBACK *pfnRead, PNG_WRITE_CALLBACK *pfnWrite, PNG_SEEK_CALLBACK *pfnSeek);
+int PNG_close(PNGIMAGE *pPNG);
+int PNG_encodeBegin(PNGIMAGE *pPNG, int iWidth, int iHeight, uint8_t ucPixelType, uint8_t ucBpp, uint8_t *pPalette, uint8_t ucCompLevel);
 void PNG_encodeEnd(PNGIMAGE *pPNG);
 int PNG_addLine(PNGIMAGE *, uint8_t *pPixels, int y);
 int PNG_addRGB565Line(PNGIMAGE *, uint16_t *pPixels, void *pTempLine, int y);
@@ -174,10 +179,12 @@ int PNG_getLastError(PNGIMAGE *pPNG);
 #endif // __cplusplus
 
 // Due to unaligned memory causing an exception, we have to do these macros the slow way
+#ifndef MOTOLONG
 #define INTELSHORT(p) ((*p) + (*(p+1)<<8))
 #define INTELLONG(p) ((*p) + (*(p+1)<<8) + (*(p+2)<<16) + (*(p+3)<<24))
 #define MOTOSHORT(p) (((*(p))<<8) + (*(p+1)))
 #define MOTOLONG(p) (((*p)<<24) + ((*(p+1))<<16) + ((*(p+2))<<8) + (*(p+3)))
+#endif // MOTOLONG
 
 // Must be a 32-bit target processor
 #define REGISTER_WIDTH 32
