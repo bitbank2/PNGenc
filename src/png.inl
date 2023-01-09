@@ -337,7 +337,25 @@ int PNG_addLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
     }
     if (y == pImage->iHeight - 1) // last line, clean up
     {
-        err = deflate(&pImage->c_stream, Z_FINISH);
+        err = deflate(&pImage->c_stream, Z_FINISH); // flush any remaining output
+        while(err == Z_OK || err == Z_BUF_ERROR) { // more data than will fit
+            if (pImage->pOutput) { // memory
+                if ((pImage->iHeaderSize + pImage->iCompressedSize + pImage->c_stream.total_out) > pImage->iBufferSize) {
+                    // output buffer not large enough
+                    pImage->iError = PNG_MEM_ERROR;
+                    return PNG_MEM_ERROR;
+                }
+                memcpy(&pImage->pOutput[pImage->iHeaderSize + pImage->iCompressedSize], pImage->ucFileBuf, pImage->c_stream.total_out);
+            } else { // file
+                (*pImage->pfnWrite)(&pImage->PNGFile, pImage->ucFileBuf, (int)pImage->c_stream.total_out);
+            }
+            pImage->iCompressedSize += (int)pImage->c_stream.total_out;
+            // reset zlib output buffer to start
+            pImage->c_stream.total_out = 0;
+            pImage->c_stream.next_out = pImage->ucFileBuf;
+            pImage->c_stream.avail_out = PNG_FILE_BUF_SIZE;
+            err = deflate(&pImage->c_stream, Z_FINISH);
+        }
         err = deflateEnd(&pImage->c_stream);
     }
     // Write the data to memory or a file
@@ -346,7 +364,7 @@ int PNG_addLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
     // of calls to 'write'. Each compressed scanline might generate only a few
     // bytes of flate output and calling write() for a few bytes at a time can
     // slow things to a crawl.
-    if (pImage->c_stream.total_out >= PNG_FILE_HIGHWATER) {
+    if (pImage->c_stream.total_out >= PNG_FILE_HIGHWATER || y == pImage->iHeight-1) {
         if (pImage->pOutput) { // memory
             if ((pImage->iHeaderSize + pImage->iCompressedSize + pImage->c_stream.total_out) > pImage->iBufferSize) {
                 // output buffer not large enough
@@ -364,20 +382,6 @@ int PNG_addLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
         pImage->c_stream.avail_out = PNG_FILE_BUF_SIZE;
     } // highwater hit
     if (y == pImage->iHeight -1) { // last line, finish file
-        // if any remaining data in output buffer, write it
-        if (pImage->c_stream.total_out > 0) {
-            if (pImage->pOutput) { // memory
-                if ((pImage->iHeaderSize + pImage->iCompressedSize + pImage->c_stream.total_out) > pImage->iBufferSize) {
-                    // output buffer not large enough
-                    pImage->iError = PNG_MEM_ERROR;
-                    return PNG_MEM_ERROR;
-                }
-                memcpy(&pImage->pOutput[pImage->iHeaderSize + pImage->iCompressedSize], pImage->ucFileBuf, pImage->c_stream.total_out);
-            } else { // file
-                (*pImage->pfnWrite)(&pImage->PNGFile, pImage->ucFileBuf, (int)pImage->c_stream.total_out);
-            }
-            pImage->iCompressedSize += (int)pImage->c_stream.total_out;
-        }
         pImage->iDataSize = PNGEndFile(pImage);
     }    
     return PNG_SUCCESS; // DEBUG
