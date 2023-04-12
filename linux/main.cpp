@@ -82,7 +82,14 @@ uint8_t * ReadBMP(const char *fname, int *width, int *height, int *bpp, unsigned
                 d[i+2] = s[i];
                 d[i+3] = s[i+3];
             }
-        } else {
+        } else if(bits == 24) {
+            for (int i=0; i<bytewidth; i+=3) {
+                d[i] = s[i+2];
+                d[i+1] = s[i+1];
+                d[i+2] = s[i];
+            }
+        }
+        else {
             memcpy(d, s, bytewidth);
         }
         d += bytewidth;
