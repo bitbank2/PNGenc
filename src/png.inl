@@ -330,7 +330,7 @@ int PNG_addLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
     }
     pImage->c_stream.next_in  = (Bytef*)pImage->ucCurrLine;
     pImage->c_stream.avail_in = iPitch+1; // compress entire buffer in 1 shot
-    err = deflate(&pImage->c_stream, Z_NO_FLUSH);
+    err = deflate(&pImage->c_stream, Z_FULL_FLUSH);
     if (err != Z_OK) { // something went wrong with the data compression, stop
         pImage->iError = PNG_ENCODE_ERROR;
         return PNG_ENCODE_ERROR;
