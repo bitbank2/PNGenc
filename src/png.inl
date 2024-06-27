@@ -304,10 +304,13 @@ int PNG_addLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
     
     iStride = pImage->ucBpp >> 3; // bytes per pixel
     iPitch = (pImage->iWidth * pImage->ucBpp) >> 3;
-    if (iStride < 1)
-        iStride = 1; // 1,4 bpp
     pOut = pImage->ucCurrLine;
-    ucFilter = PNGFindFilter(pSrc, (y == 0) ? NULL : pImage->ucPrevLine, iPitch, iStride); // find best filter
+    if (iStride < 1) {
+        iStride = 1; // 1,4 bpp
+        ucFilter = 0; // filtering doesn't seem to improve low color images
+    } else {
+        ucFilter = PNGFindFilter(pSrc, (y == 0) ? NULL : pImage->ucPrevLine, iPitch, iStride); // find best filter
+    }
     *pOut++ = ucFilter; // store filter byte
     PNGFilter(ucFilter, pOut, pSrc, pImage->ucPrevLine, iStride, iPitch); // filter the current line of image data and store
     memcpy(pImage->ucPrevLine, pSrc, iPitch);
@@ -330,13 +333,14 @@ int PNG_addLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
     }
     pImage->c_stream.next_in  = (Bytef*)pImage->ucCurrLine;
     pImage->c_stream.avail_in = iPitch+1; // compress entire buffer in 1 shot
-    err = deflate(&pImage->c_stream, Z_FULL_FLUSH);
+    err = deflate(&pImage->c_stream, Z_NO_FLUSH); // Z_FULL_FLUSH);
     if (err != Z_OK) { // something went wrong with the data compression, stop
         pImage->iError = PNG_ENCODE_ERROR;
         return PNG_ENCODE_ERROR;
     }
     if (y == pImage->iHeight - 1) // last line, clean up
     {
+        err = deflate(&pImage->c_stream, Z_FULL_FLUSH);
         err = deflate(&pImage->c_stream, Z_FINISH); // flush any remaining output
         while(err == Z_OK || err == Z_BUF_ERROR) { // more data than will fit
             if (pImage->pOutput) { // memory
@@ -457,7 +461,7 @@ int PNG_addRGB565Line(PNGIMAGE *pImage, uint16_t *pRGB565, void *pTempLine, int 
     pImage->c_stream.next_in  = (Bytef*)pImage->ucCurrLine;
     pImage->c_stream.total_in = 0;
     pImage->c_stream.avail_in = iPitch+1; // compress entire buffer in 1 shot
-    err = deflate(&pImage->c_stream, Z_SYNC_FLUSH);
+    err = deflate(&pImage->c_stream, Z_PARTIAL_FLUSH); // Z_SYNC_FLUSH);
     if (err != Z_OK) { // something went wrong with the data compression, stop
         pImage->iError = PNG_ENCODE_ERROR;
         return PNG_ENCODE_ERROR;

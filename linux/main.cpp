@@ -25,7 +25,7 @@ uint8_t * ReadBMP(const char *fname, int *width, int *height, int *bpp, unsigned
 {
     int y, w, h, bits, offset;
     uint8_t *s, *d, *pTemp, *pBitmap;
-    int pitch, bytewidth;
+    int pitch, bytewidth, colors;
     int iSize, iDelta;
     FILE *infile;
     
@@ -52,16 +52,18 @@ uint8_t * ReadBMP(const char *fname, int *width, int *height, int *bpp, unsigned
     w = *(int32_t *)&pTemp[18];
     h = *(int32_t *)&pTemp[22];
     bits = *(int16_t *)&pTemp[26] * *(int16_t *)&pTemp[28];
+    offset = *(int32_t *)&pTemp[10]; // offset to bits
+    colors = pTemp[46]; // colors used
+    if (colors == 0 || colors > (1 <<bits)) colors = 1 << bits;
     if (bits <= 8) { // it has a palette, copy it
         uint8_t *p = pPal;
         for (int i=0; i<(1<<bits); i++)
         {
-           *p++ = pTemp[54+i*4];
-           *p++ = pTemp[55+i*4];
-           *p++ = pTemp[56+i*4];
+           *p++ = pTemp[offset-(colors*4)+(i*4)+0];
+           *p++ = pTemp[offset-(colors*4)+(i*4)+1];
+           *p++ = pTemp[offset-(colors*4)+(i*4)+2];
         }
     }
-    offset = *(int32_t *)&pTemp[10]; // offset to bits
     bytewidth = (w * bits) >> 3;
     pitch = (bytewidth + 3) & 0xfffc; // DWORD aligned
 // move up the pixels
