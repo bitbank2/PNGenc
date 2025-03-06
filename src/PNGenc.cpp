@@ -29,6 +29,8 @@
 //
 int PNG::open(const char *szFilename, PNG_OPEN_CALLBACK *pfnOpen, PNG_CLOSE_CALLBACK *pfnClose, PNG_READ_CALLBACK *pfnRead, PNG_WRITE_CALLBACK *pfnWrite, PNG_SEEK_CALLBACK *pfnSeek)
 {
+    // For file access, all callback functions MUST be defined
+    if (!pfnOpen || !pfnClose || !pfnRead || !pfnWrite || !pfnSeek) return PNG_INVALID_PARAMETER;
     memset(&_png, 0, sizeof(PNGIMAGE));
     _png.iTransparent = -1;
     _png.pfnRead = pfnRead;
@@ -47,6 +49,7 @@ int PNG::open(const char *szFilename, PNG_OPEN_CALLBACK *pfnOpen, PNG_CLOSE_CALL
 
 int PNG::open(uint8_t *pOutput, int iBufferSize)
 {
+    if (!pOutput || iBufferSize < 32) return PNG_INVALID_PARAMETER; // must have a valid buffer and minimum size
     memset(&_png, 0, sizeof(PNGIMAGE));
     _png.iTransparent = -1;
     _png.pOutput = pOutput;
@@ -73,6 +76,13 @@ int PNG::close()
 
 int PNG::encodeBegin(int iWidth, int iHeight, uint8_t ucPixelType, uint8_t ucBpp, uint8_t *pPalette, uint8_t ucCompLevel)
 {
+    // Check for valid parameters
+    if (iWidth < 1 || iWidth > 32767 || iHeight < 1 || iHeight > 32767) return PNG_INVALID_PARAMETER;
+    if (ucPixelType != PNG_PIXEL_GRAYSCALE && ucPixelType != PNG_PIXEL_TRUECOLOR && ucPixelType != PNG_PIXEL_INDEXED &&
+        ucPixelType != PNG_PIXEL_GRAY_ALPHA && ucPixelType != PNG_PIXEL_TRUECOLOR_ALPHA) return PNG_INVALID_PARAMETER;
+    if (ucBpp != 1 && ucBpp != 2 && ucBpp != 4 && ucBpp != 8 && ucBpp != 24 && ucBpp != 32) return PNG_INVALID_PARAMETER;
+    if (ucCompLevel > 9) return PNG_INVALID_PARAMETER;
+    
     _png.iWidth = iWidth;
     _png.iHeight = iHeight;
     _png.ucPixelType = ucPixelType;
@@ -87,9 +97,13 @@ int PNG::encodeBegin(int iWidth, int iHeight, uint8_t ucPixelType, uint8_t ucBpp
 int PNG::addLine(uint8_t *pPixels)
 {
     int rc;
-    rc = PNG_addLine(&_png, pPixels, _png.y);
-    _png.y++;
-    return rc;
+    if ((_png.pOutput && _png.iBufferSize) || (_png.pfnOpen && _png.pfnClose && _png.pfnRead && _png.pfnSeek && _png.pfnWrite)) {
+        rc = PNG_addLine(&_png, pPixels, _png.y);
+        _png.y++;
+        return rc;
+    } else { // the encoder was never initialized
+        return PNG_NOT_INITIALIZED;
+    }
 } /* addLine() */
 
 int PNG::addRGB565Line(uint16_t *pPixels, void *pTempLine)

@@ -361,6 +361,20 @@ int PNG_addLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
             err = deflate(&pImage->c_stream, Z_FINISH);
         }
         err = deflateEnd(&pImage->c_stream);
+        if (pImage->c_stream.total_out) { // the last bytes of the compressed data stream
+            if (pImage->pOutput) { // memory
+                if ((pImage->iHeaderSize + pImage->iCompressedSize + pImage->c_stream.total_out) > pImage->iBufferSize) {
+                    // output buffer not large enough
+                    pImage->iError = PNG_MEM_ERROR;
+                    return PNG_MEM_ERROR;
+                }
+                memcpy(&pImage->pOutput[pImage->iHeaderSize + pImage->iCompressedSize], pImage->ucFileBuf, pImage->c_stream.total_out);
+            } else { // file
+                (*pImage->pfnWrite)(&pImage->PNGFile, pImage->ucFileBuf, (int)pImage->c_stream.total_out);
+            }
+            pImage->iCompressedSize += (int)pImage->c_stream.total_out;
+            pImage->c_stream.total_out = 0;
+        }
     }
     // Write the data to memory or a file
     //
@@ -368,7 +382,7 @@ int PNG_addLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
     // of calls to 'write'. Each compressed scanline might generate only a few
     // bytes of flate output and calling write() for a few bytes at a time can
     // slow things to a crawl.
-    if (pImage->c_stream.total_out >= PNG_FILE_HIGHWATER || y == pImage->iHeight-1) {
+    while (pImage->c_stream.total_out >= PNG_FILE_HIGHWATER || pImage->c_stream.avail_in != 0) {
         if (pImage->pOutput) { // memory
             if ((pImage->iHeaderSize + pImage->iCompressedSize + pImage->c_stream.total_out) > pImage->iBufferSize) {
                 // output buffer not large enough
@@ -384,6 +398,9 @@ int PNG_addLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
         pImage->c_stream.total_out = 0;
         pImage->c_stream.next_out = pImage->ucFileBuf;
         pImage->c_stream.avail_out = PNG_FILE_BUF_SIZE;
+        if (pImage->c_stream.avail_in != 0) { // left over data that it didn't have room to compress
+            err = deflate(&pImage->c_stream, Z_NO_FLUSH);
+        }
     } // highwater hit
     if (y == pImage->iHeight -1) { // last line, finish file
         pImage->iDataSize = PNGEndFile(pImage);

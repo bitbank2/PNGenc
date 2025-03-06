@@ -95,7 +95,8 @@ enum {
     PNG_NO_BUFFER,
     PNG_UNSUPPORTED_FEATURE,
     PNG_INVALID_FILE,
-    PNG_TOO_BIG
+    PNG_TOO_BIG,
+    PNG_NOT_INITIALIZED
 };
 
 typedef struct png_file_tag
