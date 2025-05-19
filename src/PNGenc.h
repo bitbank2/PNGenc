@@ -157,7 +157,7 @@ class PNG
     int close();
     int encodeBegin(int iWidth, int iHeight, uint8_t iPixelType, uint8_t iBpp, uint8_t *pPalette, uint8_t iCompLevel);
     int addLine(uint8_t *pPixels);
-    int addRGB565Line(uint16_t *pPixels, void *pTempLine);
+    int addRGB565Line(uint16_t *pPixels, void *pTempLine, bool bBigEndian = false);
     int setTransparentColor(uint32_t u32Color);
     int setAlphaPalette(uint8_t *pPalette);
     int getLastError();

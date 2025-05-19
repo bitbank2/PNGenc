@@ -415,7 +415,7 @@ int PNG_addLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
 // The input pixels are RGB565 (not supported by PNG) and are converted into the
 // format requested by the iPixelType param in the call to encodeBegin()
 //
-int PNG_addRGB565Line(PNGIMAGE *pImage, uint16_t *pRGB565, void *pTempLine, int y)
+int PNG_addRGB565Line(PNGIMAGE *pImage, uint16_t *pRGB565, void *pTempLine, int y, int bBigEndian)
 {
     unsigned char ucFilter; // filter type
     unsigned char *pOut, *pSrc;
@@ -429,6 +429,9 @@ int PNG_addRGB565Line(PNGIMAGE *pImage, uint16_t *pRGB565, void *pTempLine, int 
         case PNG_PIXEL_TRUECOLOR:
             for (int i=0; i<pImage->iWidth; i++) {
                 us = *s++;
+                if (bBigEndian) {
+                    us = __builtin_bswap16(us);
+                }
                 *d++ = (uint8_t)(((us >> 8) & 0xf8) | (us >> 13)); // red
                 *d++ = (uint8_t)(((us >> 3) & 0xfc) | ((us >> 9) & 0x3)); // green
                 *d++ = (uint8_t)(((us & 0x1f) << 3) | ((us & 0x1c) >> 2)); // blue
@@ -438,6 +441,9 @@ int PNG_addRGB565Line(PNGIMAGE *pImage, uint16_t *pRGB565, void *pTempLine, int 
             for (int i=0; i<pImage->iWidth; i++) {
                 int r, g, b;
                 us = *s++;
+                if (bBigEndian) {
+                    us = __builtin_bswap16(us);
+                }
                 r = (uint8_t)(((us >> 8) & 0xf8) | (us >> 13)); // red
                 g = (uint8_t)(((us >> 3) & 0xfc) | ((us >> 9) & 0x3)); // green
                 b = (uint8_t)(((us & 0x1f) << 3) | ((us & 0x1c) >> 2)); // blue

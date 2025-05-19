@@ -106,10 +106,10 @@ int PNG::addLine(uint8_t *pPixels)
     }
 } /* addLine() */
 
-int PNG::addRGB565Line(uint16_t *pPixels, void *pTempLine)
+int PNG::addRGB565Line(uint16_t *pPixels, void *pTempLine, bool bBigEndian)
 {
     int rc;
-    rc = PNG_addRGB565Line(&_png, pPixels, pTempLine, _png.y);
+    rc = PNG_addRGB565Line(&_png, pPixels, pTempLine, _png.y, (int)bBigEndian);
     _png.y++;
     return rc;
 } /* addRGB565Line() */
