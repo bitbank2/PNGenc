@@ -27,11 +27,11 @@
 //
 // File (SD/MMC) based initialization
 //
-int PNG::open(const char *szFilename, PNG_OPEN_CALLBACK *pfnOpen, PNG_CLOSE_CALLBACK *pfnClose, PNG_READ_CALLBACK *pfnRead, PNG_WRITE_CALLBACK *pfnWrite, PNG_SEEK_CALLBACK *pfnSeek)
+int PNGENC::open(const char *szFilename, PNGENC_OPEN_CALLBACK *pfnOpen, PNGENC_CLOSE_CALLBACK *pfnClose, PNGENC_READ_CALLBACK *pfnRead, PNGENC_WRITE_CALLBACK *pfnWrite, PNGENC_SEEK_CALLBACK *pfnSeek)
 {
     // For file access, all callback functions MUST be defined
     if (!pfnOpen || !pfnClose || !pfnRead || !pfnWrite || !pfnSeek) return PNG_INVALID_PARAMETER;
-    memset(&_png, 0, sizeof(PNGIMAGE));
+    memset(&_png, 0, sizeof(PNGENCIMAGE));
     _png.iTransparent = -1;
     _png.pfnRead = pfnRead;
     _png.pfnWrite = pfnWrite;
@@ -47,10 +47,10 @@ int PNG::open(const char *szFilename, PNG_OPEN_CALLBACK *pfnOpen, PNG_CLOSE_CALL
 
 } /* open() */
 
-int PNG::open(uint8_t *pOutput, int iBufferSize)
+int PNGENC::open(uint8_t *pOutput, int iBufferSize)
 {
     if (!pOutput || iBufferSize < 32) return PNG_INVALID_PARAMETER; // must have a valid buffer and minimum size
-    memset(&_png, 0, sizeof(PNGIMAGE));
+    memset(&_png, 0, sizeof(PNGENCIMAGE));
     _png.iTransparent = -1;
     _png.pOutput = pOutput;
     _png.iBufferSize = iBufferSize;
@@ -60,21 +60,21 @@ int PNG::open(uint8_t *pOutput, int iBufferSize)
 //
 // return the last error (if any)
 //
-int PNG::getLastError()
+int PNGENC::getLastError()
 {
     return _png.iError;
 } /* getLastError() */
 //
 // Close the file - not needed when decoding from memory
 //
-int PNG::close()
+int PNGENC::close()
 {
     if (_png.pfnClose)
         (*_png.pfnClose)(&_png.PNGFile);
     return _png.iDataSize;
 } /* close() */
 
-int PNG::encodeBegin(int iWidth, int iHeight, uint8_t ucPixelType, uint8_t ucBpp, uint8_t *pPalette, uint8_t ucCompLevel)
+int PNGENC::encodeBegin(int iWidth, int iHeight, uint8_t ucPixelType, uint8_t ucBpp, uint8_t *pPalette, uint8_t ucCompLevel)
 {
     // Check for valid parameters
     if (iWidth < 1 || iWidth > 32767 || iHeight < 1 || iHeight > 32767) return PNG_INVALID_PARAMETER;
@@ -94,7 +94,7 @@ int PNG::encodeBegin(int iWidth, int iHeight, uint8_t ucPixelType, uint8_t ucBpp
     return PNG_SUCCESS;
 } /* encodeBegin() */
 
-int PNG::addLine(uint8_t *pPixels)
+int PNGENC::addLine(uint8_t *pPixels)
 {
     int rc;
     if ((_png.pOutput && _png.iBufferSize) || (_png.pfnOpen && _png.pfnClose && _png.pfnRead && _png.pfnSeek && _png.pfnWrite)) {
@@ -106,7 +106,7 @@ int PNG::addLine(uint8_t *pPixels)
     }
 } /* addLine() */
 
-int PNG::addRGB565Line(uint16_t *pPixels, void *pTempLine, bool bBigEndian)
+int PNGENC::addRGB565Line(uint16_t *pPixels, void *pTempLine, bool bBigEndian)
 {
     int rc;
     rc = PNG_addRGB565Line(&_png, pPixels, pTempLine, _png.y, (int)bBigEndian);
@@ -114,7 +114,7 @@ int PNG::addRGB565Line(uint16_t *pPixels, void *pTempLine, bool bBigEndian)
     return rc;
 } /* addRGB565Line() */
 
-int PNG::setTransparentColor(uint32_t u32Color)
+int PNGENC::setTransparentColor(uint32_t u32Color)
 {
     if (_png.ucPixelType == PNG_PIXEL_GRAYSCALE || _png.ucPixelType == PNG_PIXEL_TRUECOLOR) {
         _png.iTransparent = u32Color;
@@ -124,7 +124,7 @@ int PNG::setTransparentColor(uint32_t u32Color)
         return PNG_INVALID_PARAMETER; // indexed image must have palette alpha values
 } /* setTransparentColor() */
 
-int PNG::setAlphaPalette(uint8_t *pPalette)
+int PNGENC::setAlphaPalette(uint8_t *pPalette)
 {
     if (pPalette != NULL && _png.ucPixelType == PNG_PIXEL_INDEXED) {
         _png.ucHasAlphaPalette = 1;

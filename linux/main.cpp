@@ -9,7 +9,7 @@
 //
 #include "../src/PNGenc.h"
 
-PNG png; // static instance of class
+PNGENC png; // static instance of class
 
 uint8_t localPalette[] = {0,0,0,0,255,0};
 uint8_t ucAlphaPalette[] = {0,255}; // first color is transparent

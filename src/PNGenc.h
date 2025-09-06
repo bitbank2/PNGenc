@@ -60,7 +60,11 @@
 #define PNG_FILE_HIGHWATER ((PNG_FILE_BUF_SIZE * 3)/4)
 // Number of bytes to reserve for current and previous lines
 // Defaults to 640 32-bit pixels max width
+#ifndef PNG_MAX_BUFFERED_PIXELS
 #define PNG_MAX_BUFFERED_PIXELS (640*4 + 1)
+#endif
+
+#ifndef __PNGDEC__
 // PNG filter type
 enum {
     PNG_FILTER_NONE=0,
@@ -107,17 +111,19 @@ typedef struct png_file_tag
   void * fHandle; // class pointer to File/SdFat or whatever you want
 } PNGFILE;
 
+#endif // !__PNGDEC__
+
 // Callback function prototypes
-typedef int32_t (PNG_READ_CALLBACK)(PNGFILE *pFile, uint8_t *pBuf, int32_t iLen);
-typedef int32_t (PNG_WRITE_CALLBACK)(PNGFILE *pFile, uint8_t *pBuf, int32_t iLen);
-typedef int32_t (PNG_SEEK_CALLBACK)(PNGFILE *pFile, int32_t iPosition);
-typedef void * (PNG_OPEN_CALLBACK)(const char *szFilename);
-typedef void (PNG_CLOSE_CALLBACK)(PNGFILE *pFile);
+typedef int32_t (PNGENC_READ_CALLBACK)(PNGFILE *pFile, uint8_t *pBuf, int32_t iLen);
+typedef int32_t (PNGENC_WRITE_CALLBACK)(PNGFILE *pFile, uint8_t *pBuf, int32_t iLen);
+typedef int32_t (PNGENC_SEEK_CALLBACK)(PNGFILE *pFile, int32_t iPosition);
+typedef void * (PNGENC_OPEN_CALLBACK)(const char *szFilename);
+typedef void (PNGENC_CLOSE_CALLBACK)(PNGFILE *pFile);
 
 //
 // our private structure to hold a JPEG image decode state
 //
-typedef struct png_image_tag
+typedef struct pngenc_image_tag
 {
     int iWidth, iHeight, y, iTransparent; // image size
     uint8_t ucBpp, ucPixelType, ucCompLevel, ucHasAlphaPalette;
@@ -130,11 +136,11 @@ typedef struct png_image_tag
     int iMemPool; // memory allocated out of memory pool
     int iPitch; // bytes per line
     int iError;
-    PNG_READ_CALLBACK *pfnRead;
-    PNG_WRITE_CALLBACK *pfnWrite;
-    PNG_SEEK_CALLBACK *pfnSeek;
-    PNG_OPEN_CALLBACK *pfnOpen;
-    PNG_CLOSE_CALLBACK *pfnClose;
+    PNGENC_READ_CALLBACK *pfnRead;
+    PNGENC_WRITE_CALLBACK *pfnWrite;
+    PNGENC_SEEK_CALLBACK *pfnSeek;
+    PNGENC_OPEN_CALLBACK *pfnOpen;
+    PNGENC_CLOSE_CALLBACK *pfnClose;
     PNGFILE PNGFile;
     z_stream c_stream; /* compression stream */
     uint8_t ucPalette[1024];
@@ -142,17 +148,17 @@ typedef struct png_image_tag
     uint8_t ucPrevLine[PNG_MAX_BUFFERED_PIXELS];
     uint8_t ucCurrLine[PNG_MAX_BUFFERED_PIXELS];
     uint8_t ucFileBuf[PNG_FILE_BUF_SIZE]; // holds temp file data
-} PNGIMAGE;
+} PNGENCIMAGE;
 
 #ifdef __cplusplus
 #define PNG_STATIC static
 //
-// The PNG class wraps portable C code which does the actual work
+// The PNGENC class wraps portable C code which does the actual work
 //
-class PNG
+class PNGENC
 {
   public:
-    int open(const char *szFilename, PNG_OPEN_CALLBACK *pfnOpen, PNG_CLOSE_CALLBACK *pfnClose, PNG_READ_CALLBACK *pfnRead, PNG_WRITE_CALLBACK *pfnWrite, PNG_SEEK_CALLBACK *pfnSeek);
+    int open(const char *szFilename, PNGENC_OPEN_CALLBACK *pfnOpen, PNGENC_CLOSE_CALLBACK *pfnClose, PNGENC_READ_CALLBACK *pfnRead, PNGENC_WRITE_CALLBACK *pfnWrite, PNGENC_SEEK_CALLBACK *pfnSeek);
     int open(uint8_t *pOutput, int iBufferSize);
     int close();
     int encodeBegin(int iWidth, int iHeight, uint8_t iPixelType, uint8_t iBpp, uint8_t *pPalette, uint8_t iCompLevel);
@@ -163,20 +169,20 @@ class PNG
     int getLastError();
 
   private:
-    PNGIMAGE _png;
+    PNGENCIMAGE _png;
 };
 #else
 #define PNG_STATIC
-int PNG_openRAM(PNGIMAGE *pPNG, uint8_t *pData, int iDataSize);
-int PNG_openFile(PNGIMAGE *pPNG, const char *szFilename, PNG_OPEN_CALLBACK *pfnOpen, PNG_CLOSE_CALLBACK *pfnClose, PNG_READ_CALLBACK *pfnRead, PNG_WRITE_CALLBACK *pfnWrite, PNG_SEEK_CALLBACK *pfnSeek);
-int PNG_close(PNGIMAGE *pPNG);
-int PNG_encodeBegin(PNGIMAGE *pPNG, int iWidth, int iHeight, uint8_t ucPixelType, uint8_t ucBpp, uint8_t *pPalette, uint8_t ucCompLevel);
-void PNG_encodeEnd(PNGIMAGE *pPNG);
+int PNG_openRAM(PNGENCIMAGE *pPNG, uint8_t *pData, int iDataSize);
+int PNG_openFile(PNGENCIMAGE *pPNG, const char *szFilename, PNGENC_OPEN_CALLBACK *pfnOpen, PNGENC_CLOSE_CALLBACK *pfnClose, PNGENC_READ_CALLBACK *pfnRead, PNGENC_WRITE_CALLBACK *pfnWrite, PNGENC_SEEK_CALLBACK *pfnSeek);
+int PNG_close(PNGENCIMAGE *pPNG);
+int PNG_encodeBegin(PNGENCIMAGE *pPNG, int iWidth, int iHeight, uint8_t ucPixelType, uint8_t ucBpp, uint8_t *pPalette, uint8_t ucCompLevel);
+void PNG_encodeEnd(PNGENCIMAGE *pPNG);
 int PNG_addLine(PNGIMAGE *, uint8_t *pPixels, int y);
-int PNG_addRGB565Line(PNGIMAGE *, uint16_t *pPixels, void *pTempLine, int y);
-int PNG_setTransparentColor(PNGIMAGE *pPNG, uint32_t u32Color);
-int PNG_setAlphaPalette(PNGIMAGE *pPNG, uint8_t *pPalette);
-int PNG_getLastError(PNGIMAGE *pPNG);
+int PNG_addRGB565Line(PNGENCIMAGE *, uint16_t *pPixels, void *pTempLine, int y);
+int PNG_setTransparentColor(PNGENCIMAGE *pPNG, uint32_t u32Color);
+int PNG_setAlphaPalette(PNGENCIMAGE *pPNG, uint8_t *pPalette);
+int PNG_getLastError(PNGENCIMAGE *pPNG);
 #endif // __cplusplus
 
 // Due to unaligned memory causing an exception, we have to do these macros the slow way

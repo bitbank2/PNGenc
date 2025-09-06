@@ -91,7 +91,7 @@ static unsigned char PAETH(unsigned char a, unsigned char b, unsigned char c)
 //
 // Write the PNG file header and, if needed, a color palette chunk
 //
-static int PNGStartFile(PNGIMAGE *pImage)
+static int PNGStartFile(PNGENCIMAGE *pImage)
 {
     int iError = PNG_SUCCESS;
     unsigned char *p;
@@ -199,7 +199,7 @@ static int PNGStartFile(PNGIMAGE *pImage)
 //
 // Finish PNG file data (updates IDAT chunk size+crc & writes END chunk)
 //
-int PNGEndFile(PNGIMAGE *pImage)
+int PNGEndFile(PNGENCIMAGE *pImage)
 {
     int iSize=0;
     uint8_t *p;
@@ -263,7 +263,7 @@ int PNGEndFile(PNGIMAGE *pImage)
 //
 voidpf ZLIB_INTERNAL myalloc (voidpf opaque, unsigned int items, unsigned int size)
 {
-    PNGIMAGE *pImage = (PNGIMAGE *)opaque;
+    PNGENCIMAGE *pImage = (PNGENCIMAGE *)opaque;
     // allocate from our internal pool
     int iSize = items * size;
     void *p = &pImage->ucMemPool[pImage->iMemPool];
@@ -281,7 +281,7 @@ void ZLIB_INTERNAL myfree (voidpf opaque, voidpf ptr)
 // incrementally to the output file. This allows the system to not need an
 // input nor output buffer larger than 2 lines of image data
 //
-int PNG_encodeBegin(PNGIMAGE *pPNG, int iWidth, int iHeight, uint8_t ucPixelType, uint8_t ucBpp, uint8_t *pPalette, uint8_t ucCompLevel)
+int PNG_encodeBegin(PNGENCIMAGE *pPNG, int iWidth, int iHeight, uint8_t ucPixelType, uint8_t ucBpp, uint8_t *pPalette, uint8_t ucCompLevel)
 {
     pPNG->iWidth = iWidth;
     pPNG->iHeight = iHeight;
@@ -294,7 +294,7 @@ int PNG_encodeBegin(PNGIMAGE *pPNG, int iWidth, int iHeight, uint8_t ucPixelType
     return PNG_SUCCESS;
 } /* PNG_encodeBegin() */
 
-int PNG_addLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
+int PNG_addLine(PNGENCIMAGE *pImage, uint8_t *pSrc, int y)
 {
     unsigned char ucFilter; // filter type
     unsigned char *pOut;
@@ -303,7 +303,15 @@ int PNG_addLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
     int iPitch;
     
     iStride = pImage->ucBpp >> 3; // bytes per pixel
-    iPitch = (pImage->iWidth * pImage->ucBpp) >> 3;
+    if (pImage->ucBpp == 1) {
+        iPitch = (pImage->iWidth + 7)/8;
+    } else if (pImage->ucBpp == 2) {
+        iPitch = (pImage->iWidth + 3)/4;
+    } else if (pImage->ucBpp == 4) {
+        iPitch = (pImage->iWidth + 1)/2;
+    } else {
+        iPitch = (pImage->iWidth * pImage->ucBpp) >> 3;
+    }
     pOut = pImage->ucCurrLine;
     if (iStride < 1) {
         iStride = 1; // 1,4 bpp
@@ -415,7 +423,7 @@ int PNG_addLine(PNGIMAGE *pImage, uint8_t *pSrc, int y)
 // The input pixels are RGB565 (not supported by PNG) and are converted into the
 // format requested by the iPixelType param in the call to encodeBegin()
 //
-int PNG_addRGB565Line(PNGIMAGE *pImage, uint16_t *pRGB565, void *pTempLine, int y, int bBigEndian)
+int PNG_addRGB565Line(PNGENCIMAGE *pImage, uint16_t *pRGB565, void *pTempLine, int y, int bBigEndian)
 {
     unsigned char ucFilter; // filter type
     unsigned char *pOut, *pSrc;
@@ -706,18 +714,18 @@ int j;
       } // switch
 } /* PNGFilter() */
 
-int PNG_openRAM(PNGIMAGE *pPNG, uint8_t *pData, int iDataSize)
+int PNG_openRAM(PNGENCIMAGE *pPNG, uint8_t *pData, int iDataSize)
 {
-    memset(pPNG, 0, sizeof(PNGIMAGE));
+    memset(pPNG, 0, sizeof(PNGENCIMAGE));
     pPNG->iTransparent = -1;
     pPNG->pOutput = pData;
     pPNG->iBufferSize = iDataSize;
     return PNG_SUCCESS;
 } /* PNG_openRAM() */
 
-int PNG_openFile(PNGIMAGE *pPNG, const char *szFilename, PNG_OPEN_CALLBACK *pfnOpen, PNG_CLOSE_CALLBACK *pfnClose, PNG_READ_CALLBACK *pfnRead, PNG_WRITE_CALLBACK *pfnWrite, PNG_SEEK_CALLBACK *pfnSeek)
+int PNG_openFile(PNGENCIMAGE *pPNG, const char *szFilename, PNGENC_OPEN_CALLBACK *pfnOpen, PNGENC_CLOSE_CALLBACK *pfnClose, PNGENC_READ_CALLBACK *pfnRead, PNGENC_WRITE_CALLBACK *pfnWrite, PNGENC_SEEK_CALLBACK *pfnSeek)
 {
-    memset(pPNG, 0, sizeof(PNGIMAGE));
+    memset(pPNG, 0, sizeof(PNGENCIMAGE));
     pPNG->iTransparent = -1;
     pPNG->pfnRead = pfnRead;
     pPNG->pfnWrite = pfnWrite;
@@ -732,7 +740,7 @@ int PNG_openFile(PNGIMAGE *pPNG, const char *szFilename, PNG_OPEN_CALLBACK *pfnO
     return PNG_SUCCESS;
 } /* PNG_openFile() */
 
-int PNG_close(PNGIMAGE *pPNG)
+int PNG_close(PNGENCIMAGE *pPNG)
 {
     if (pPNG->pfnClose)
         (*pPNG->pfnClose)(&pPNG->PNGFile);

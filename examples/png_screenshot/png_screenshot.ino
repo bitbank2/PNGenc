@@ -8,7 +8,7 @@
 #include <SPI.h>
 #include <SD.h>
 BB_SPI_LCD lcd;
-PNG png;
+PNGENC png;
 SPIClass SD_SPI;
 // File instance
 static File pngfile;

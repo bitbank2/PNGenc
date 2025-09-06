@@ -3,7 +3,7 @@
 //
 #include <PNGenc.h>
 
-PNG png;
+PNGENC png;
 uint8_t *pOut, ucLine[1024];
 int iFilePos;
 //

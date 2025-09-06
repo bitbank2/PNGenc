@@ -21,7 +21,7 @@
 #define SPI_SCK 12
 #define SPI_MISO 13
 
-PNG png;
+PNGENC png;
 uint8_t *pBits, *pOut, *pSrc;
 #define MAX_OUT_SIZE 65536
 uint8_t ucTemp[240 * 3]; // will hold a line of converted RGB565->RGB888 pixels

@@ -12,7 +12,7 @@
 //
 
 #include <PNGenc.h>
-PNG png; // static instance of the PNG encoder lass
+PNGENC png; // static instance of the PNG encoder lass
 
 // Add comment bars (//) in front of this macro to send the output to RAM only
 #define WRITE_TO_SD
@@ -27,7 +27,7 @@ void * myOpen(const char *filename) {
   Serial.printf("Attempting to open %s\n", filename);
   // IMPORTANT!!! - don't use FILE_WRITE because it includes O_APPEND
   // this will cause the file to be written incorrectly
-  myfile = SD.open(filename, O_READ| O_WRITE | O_CREAT);
+  myfile = SD.open(filename, FILE_WRITE, true);
   return &myfile;
 }
 void myClose(PNGFILE *handle) {
